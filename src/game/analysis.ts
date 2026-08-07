@@ -13,11 +13,15 @@ import { LANE_COUNT } from "./types";
 
 export type Difficulty = "easy" | "normal" | "hard";
 
-/** Notes per second the generator aims for, per difficulty. */
+/**
+ * Notes per second the generator aims for, per difficulty. Tuned low: the show
+ * carries the spectacle, so a sparser chart still looks spectacular while
+ * staying comfortably playable.
+ */
 const TARGET_DENSITY: Record<Difficulty, number> = {
-  easy: 1.6,
-  normal: 3.0,
-  hard: 5.0,
+  easy: 0.9,
+  normal: 1.8,
+  hard: 3.2,
 };
 
 const FFT_SIZE = 1024;
@@ -421,7 +425,7 @@ export function buildChart(
   let lastTime = -1;
   // Easier difficulties get a wider minimum gap so patterns stay readable.
   const minGap =
-    difficulty === "easy" ? 0.28 : difficulty === "normal" ? 0.16 : 0.1;
+    difficulty === "easy" ? 0.5 : difficulty === "normal" ? 0.32 : 0.2;
 
   for (const i of keep) {
     const t = analysis.onsets[i];

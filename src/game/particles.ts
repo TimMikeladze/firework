@@ -4,9 +4,16 @@
  * mid-show.
  */
 
-const MAX_PARTICLES = 6000;
+const MAX_PARTICLES = 60000;
 const GRAVITY = 46;
 const DRAG = 0.86;
+
+/**
+ * Global brightness budget for the additive pass. Individual particles are dim;
+ * density is what makes a burst read as bright. Without this the `lighter`
+ * composite saturates to flat white the moment two shells overlap.
+ */
+const PARTICLE_ALPHA = 0.42;
 
 export type BurstShape =
   | "peony"
@@ -14,7 +21,13 @@ export type BurstShape =
   | "willow"
   | "palm"
   | "ring"
-  | "crossette";
+  | "crossette"
+  | "double-ring"
+  | "spiral"
+  | "star"
+  | "strobe"
+  | "comet-shell"
+  | "horsetail";
 
 export interface Rgb {
   r: number;
@@ -167,7 +180,178 @@ export class ParticleSystem {
     const sparkle = o.sparkle ?? 0.4;
     const n = Math.min(o.count, this.free.length);
 
+    // `size` is the radius the shell should actually reach, in pixels. Drag
+    // means a particle only travels a fraction of (speed × life), so convert
+    // the requested radius into the launch speed that achieves it.
+    //
+    // With per-frame damping d applied at 60fps, total distance for initial
+    // speed v is v · (1 - d^(60·life)) / (60 · (1 - d)). Inverting that for the
+    // dominant drag value gives the factor below.
+    const reach = (1 - DRAG ** (60 * o.life)) / (60 * (1 - DRAG));
+    const speedScale = 1 / Math.max(0.02, reach);
+    o = { ...o, size: o.size * speedScale };
+
     switch (o.shape) {
+      case "double-ring": {
+        // Two concentric rings. Both stay close to circular: heavy squashing
+        // collapses the ring into a wedge rather than reading as perspective.
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * Math.PI * 4;
+          const outer = i % 2 === 0;
+          const speed = o.size * (outer ? 1 : 0.6) * (0.95 + this.rand() * 0.1);
+          const squash = outer ? 0.86 : 1;
+          this.spawn(
+            o.x,
+            o.y,
+            Math.cos(a) * speed,
+            Math.sin(a) * speed * squash,
+            o.life,
+            2,
+            o.color,
+            fade,
+            DRAG,
+            0.65,
+            sparkle,
+          );
+        }
+        break;
+      }
+      case "spiral": {
+        // Particles released along a rotating arm, producing curling arcs.
+        const arms = 4;
+        for (let i = 0; i < n; i++) {
+          const t = i / n;
+          const arm = i % arms;
+          const a = (arm / arms) * Math.PI * 2 + t * Math.PI * 3.2;
+          const speed = o.size * (0.25 + t * 0.85);
+          this.spawn(
+            o.x,
+            o.y,
+            Math.cos(a) * speed,
+            Math.sin(a) * speed,
+            o.life * (0.8 + t * 0.5),
+            2.1,
+            o.color,
+            fade,
+            DRAG,
+            0.85,
+            sparkle,
+          );
+        }
+        break;
+      }
+      case "star": {
+        // Five sharp points: speed is modulated by angle so spokes stand out.
+        const points = 5;
+        for (let i = 0; i < n; i++) {
+          const a = this.rand() * Math.PI * 2;
+          // Cusped radial profile — max on a point, min between points.
+          const lobe = Math.abs(Math.cos((a * points) / 2)) ** 2.5;
+          const speed =
+            o.size * (0.25 + lobe * 0.95) * (0.85 + this.rand() * 0.3);
+          this.spawn(
+            o.x,
+            o.y,
+            Math.cos(a) * speed,
+            Math.sin(a) * speed,
+            o.life,
+            2.1,
+            o.color,
+            fade,
+            DRAG,
+            0.9,
+            sparkle,
+          );
+        }
+        break;
+      }
+      case "strobe": {
+        // Dense, short-lived, heavily flickering — a crackling burst.
+        for (let i = 0; i < n; i++) {
+          const a = this.rand() * Math.PI * 2;
+          const speed = o.size * (0.2 + this.rand() ** 0.6 * 0.8);
+          this.spawn(
+            o.x,
+            o.y,
+            Math.cos(a) * speed,
+            Math.sin(a) * speed,
+            o.life * (0.45 + this.rand() * 0.4),
+            2.3,
+            o.color,
+            fade,
+            0.83,
+            0.9,
+            1,
+          );
+        }
+        break;
+      }
+      case "comet-shell": {
+        // A tight core plus a handful of long comets streaking well past it.
+        const comets = 9;
+        const perComet = Math.max(3, Math.floor((n * 0.35) / comets));
+        for (let i = 0; i < n - comets * perComet; i++) {
+          const a = this.rand() * Math.PI * 2;
+          const speed = o.size * (0.15 + this.rand() * 0.4);
+          this.spawn(
+            o.x,
+            o.y,
+            Math.cos(a) * speed,
+            Math.sin(a) * speed,
+            o.life * 0.8,
+            2,
+            o.color,
+            fade,
+            DRAG,
+            1,
+            sparkle,
+          );
+        }
+        for (let c = 0; c < comets; c++) {
+          const a = (c / comets) * Math.PI * 2 + this.rand() * 0.3;
+          for (let i = 0; i < perComet; i++) {
+            // Trailing particles share a heading but lag in speed. Kept close
+            // to the shell radius — much faster and they leave the frame as
+            // straight streaks instead of arcing comets.
+            const speed = o.size * (0.85 + (i / perComet) * 0.4);
+            this.spawn(
+              o.x,
+              o.y,
+              Math.cos(a) * speed,
+              Math.sin(a) * speed,
+              o.life * 1.1,
+              2.5,
+              o.color,
+              fade,
+              DRAG,
+              0.9,
+              sparkle * 0.6,
+            );
+          }
+        }
+        break;
+      }
+      case "horsetail": {
+        // Everything falls: a downward-biased spray of heavy, slow embers.
+        for (let i = 0; i < n; i++) {
+          const a = this.rand() * Math.PI * 2;
+          const speed = o.size * (0.14 + this.rand() * 0.3);
+          this.spawn(
+            o.x,
+            o.y,
+            Math.cos(a) * speed * 0.9,
+            Math.abs(Math.sin(a) * speed) * 0.5 + o.size * 0.12,
+            o.life * 2,
+            2.4,
+            o.color,
+            fade,
+            0.93,
+            1.8,
+            sparkle * 1.2,
+          );
+        }
+        break;
+      }
       case "ring": {
         // Flat expanding ring, slight thickness.
         for (let i = 0; i < n; i++) {
@@ -301,6 +485,50 @@ export class ParticleSystem {
         }
       }
     }
+
+    // Every shell gets the same two extra layers on top of its shape, which is
+    // what makes a burst look like an explosion rather than a scatter plot.
+
+    // 1. Ignition flash: a very fast, very short-lived white-hot core.
+    const flashCount = Math.min(28, Math.floor(n * 0.12), this.free.length);
+    for (let i = 0; i < flashCount; i++) {
+      const a = this.rand() * Math.PI * 2;
+      const speed = o.size * (0.05 + this.rand() * 0.28);
+      this.spawn(
+        o.x,
+        o.y,
+        Math.cos(a) * speed,
+        Math.sin(a) * speed,
+        0.14 + this.rand() * 0.12,
+        3.4,
+        { r: 255, g: 250, b: 230 },
+        o.color,
+        0.8,
+        0.3,
+        0,
+      );
+    }
+
+    // 2. Glitter: slow, long-lived, heavily flickering motes that hang in the
+    // air after the shell itself has burned out.
+    const glitterCount = Math.min(70, Math.floor(n * 0.22), this.free.length);
+    for (let i = 0; i < glitterCount; i++) {
+      const a = this.rand() * Math.PI * 2;
+      const speed = o.size * (0.08 + this.rand() * 0.5);
+      this.spawn(
+        o.x,
+        o.y,
+        Math.cos(a) * speed,
+        Math.sin(a) * speed,
+        o.life * (1.5 + this.rand()),
+        1.5,
+        o.color,
+        fade,
+        0.9,
+        0.5,
+        1,
+      );
+    }
   }
 
   /** Small directional spray, used for launch pads and miss puffs. */
@@ -388,29 +616,70 @@ export class ParticleSystem {
    */
   render(ctx: CanvasRenderingContext2D, time: number) {
     ctx.globalCompositeOperation = "lighter";
+    ctx.lineCap = "round";
+
     for (let i = 0; i < MAX_PARTICLES; i++) {
       if (this.active[i] === 0) continue;
       const t = this.life[i] / this.maxLife[i];
       // Ease-out alpha so embers linger instead of popping out.
-      let alpha = t * t;
+      let alpha = t * t * PARTICLE_ALPHA;
       if (this.sparkle[i] > 0) {
         // Flicker frequency varies per particle via its position hash.
         const f = Math.sin(time * 40 + i * 1.7) * 0.5 + 0.5;
         alpha *= 1 - this.sparkle[i] * 0.55 * f;
       }
-      if (alpha <= 0.01) continue;
+      if (alpha <= 0.008) continue;
+
+      // Embers cool as they age: the color ramps from its hot value toward the
+      // fade color, which is what gives a burst its characteristic gradient.
       const k = 1 - t;
       const r = (this.cr[i] * t + this.fr[i] * k) | 0;
       const g = (this.cg[i] * t + this.fg[i] * k) | 0;
       const b = (this.cb[i] * t + this.fb[i] * k) | 0;
+
+      const vx = this.pvx[i];
+      const vy = this.pvy[i];
+      const speed = Math.hypot(vx, vy);
       const s = this.size[i] * (0.5 + t * 0.8);
-      ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
-      ctx.fillRect(this.px[i] - s * 0.5, this.py[i] - s * 0.5, s, s);
+
+      if (speed > 24) {
+        // Fast embers draw as motion-stretched streaks along their velocity —
+        // this is the single biggest difference between "dots" and "fireworks".
+        const stretch = Math.min(26, speed * 0.045) * (0.4 + t * 0.8);
+        const nx = vx / speed;
+        const ny = vy / speed;
+        ctx.strokeStyle = `rgba(${r},${g},${b},${alpha})`;
+        ctx.lineWidth = s;
+        ctx.beginPath();
+        ctx.moveTo(this.px[i] - nx * stretch, this.py[i] - ny * stretch);
+        ctx.lineTo(this.px[i], this.py[i]);
+        ctx.stroke();
+
+        // A hot white core on the leading tip of the brightest embers.
+        if (alpha > 0.16) {
+          ctx.fillStyle = `rgba(255,250,235,${alpha * 0.5})`;
+          ctx.fillRect(
+            this.px[i] - s * 0.32,
+            this.py[i] - s * 0.32,
+            s * 0.64,
+            s * 0.64,
+          );
+        }
+      } else {
+        // Slow embers are round points; drawn as short round-capped segments so
+        // they share the same anti-aliased look as the streaks.
+        ctx.strokeStyle = `rgba(${r},${g},${b},${alpha})`;
+        ctx.lineWidth = s;
+        ctx.beginPath();
+        ctx.moveTo(this.px[i], this.py[i]);
+        ctx.lineTo(this.px[i] + 0.01, this.py[i]);
+        ctx.stroke();
+      }
     }
 
     // Rocket heads: brighter than their trail so the climb reads clearly.
     for (const rk of this.rockets) {
-      ctx.fillStyle = `rgba(255,225,170,0.95)`;
+      ctx.fillStyle = `rgba(255,225,170,0.9)`;
       ctx.fillRect(rk.x - 1.5, rk.y - 2.5, 3, 5);
     }
     ctx.globalCompositeOperation = "source-over";

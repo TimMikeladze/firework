@@ -79,36 +79,29 @@ function buildNotes(): Note[] {
         break;
       }
       case "build": {
-        // Eighths that tighten into sixteenths on the last bar of the build.
-        for (let i = 0; i < 8; i++) {
-          push(t0 + BEAT * 0.5 * i, i % 2 === 0 ? i / 2 : 3 - ((i / 2) | 0));
-        }
-        if (barIndex === 3) {
-          for (let i = 0; i < 4; i++) push(t0 + BEAT * 3 + BEAT * 0.25 * i, i);
-        }
+        // Quarters walking outward, with one offbeat pickup to signal the lift.
+        for (let b = 0; b < 4; b++) push(t0 + BEAT * b, b % LANE_COUNT);
+        if (barIndex === 3) push(t0 + BEAT * 3.5, 3);
         break;
       }
       case "chorus": {
-        // Driving eighths with a two-lane stack on each downbeat.
+        // Quarters with a two-lane stack on the downbeat — the stack is the
+        // payoff moment, and it stays readable because nothing crowds it.
         push(t0, 0);
         push(t0, 3);
-        for (let i = 1; i < 8; i++) {
-          push(
-            t0 + BEAT * 0.5 * i,
-            i % 2 === 0 ? (i / 2) % LANE_COUNT : 3 - (i % LANE_COUNT),
-          );
-        }
+        push(t0 + BEAT, 1);
+        push(t0 + BEAT * 2, 2);
+        push(t0 + BEAT * 3, 1);
         break;
       }
       case "drop": {
-        // Densest figure: sixteenth runs sweeping outward, stacks on the beat.
+        // The climax: quarters plus one eighth flourish, still four-per-bar so
+        // the player can actually ride it.
         for (let b = 0; b < 4; b++) {
-          push(t0 + BEAT * b, b % 2 === 0 ? 0 : 1);
-          push(t0 + BEAT * b, b % 2 === 0 ? 3 : 2);
-          push(t0 + BEAT * b + BEAT * 0.25, b % LANE_COUNT);
-          push(t0 + BEAT * b + BEAT * 0.5, (b + 1) % LANE_COUNT);
-          push(t0 + BEAT * b + BEAT * 0.75, (b + 2) % LANE_COUNT);
+          push(t0 + BEAT * b, b % 2 === 0 ? 0 : 2);
+          if (b % 2 === 0) push(t0 + BEAT * b, 3);
         }
+        push(t0 + BEAT * 3.5, 1);
         break;
       }
       case "outro": {

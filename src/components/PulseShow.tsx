@@ -464,13 +464,14 @@ export default function PulseShow() {
             </div>
           )}
 
+          {/* Tap zones are translucent so rockets stay visible climbing behind them. */}
           {!ambient && (
-            <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2 md:hidden">
+            <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 gap-2 md:hidden">
               {LANE_LABELS.map((label, lane) => (
                 <button
                   key={label}
                   type="button"
-                  className="h-16 w-[19vw] max-w-24 rounded-xl border border-white/20 bg-white/5 font-mono text-white/70 active:bg-white/25"
+                  className="h-14 w-[19vw] max-w-24 rounded-xl border border-white/15 bg-white/[0.04] font-mono text-white/50 backdrop-blur-[2px] active:bg-white/20"
                   onPointerDown={(e) => {
                     e.preventDefault();
                     engineRef.current?.pressLane(lane);
@@ -538,7 +539,7 @@ export default function PulseShow() {
             Start
           </button>
           <p className="font-mono text-xs text-white/30">
-            {LANE_LABELS.join(" · ")} — press a key anywhere to fire a rocket
+            {LANE_LABELS.join(" · ")} — hit each rocket as it reaches the beam
           </p>
         </div>
       )}
@@ -784,7 +785,8 @@ export default function PulseShow() {
               {(acc * 100).toFixed(1)}% · {score.maxCombo}x max combo
             </div>
             <div className="mt-1 text-xs text-white/40">
-              {score.perfect} perfect · {score.good} good · {score.miss} miss
+              {score.perfect} perfect · {score.great} great · {score.good} good
+              · {score.miss} miss
             </div>
             {newBest && (
               <div className="mt-2 text-xs text-amber-200/80">
