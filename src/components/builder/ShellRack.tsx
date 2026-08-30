@@ -21,7 +21,7 @@ function ShellRow({
 
   return (
     <div
-      className={`group flex items-center gap-2 rounded-[3px] border px-2 py-1.5 transition-colors ${
+      className={`group pointer-coarse:py-2 flex items-center gap-2 rounded-[3px] border px-2 py-1.5 transition-colors ${
         active
           ? "border-ember/50 bg-ember/10"
           : "border-transparent hover:border-seam hover:bg-riser/70"
@@ -40,7 +40,7 @@ function ShellRow({
       <button
         type="button"
         onClick={onLoad}
-        className="min-w-0 flex-1 text-left"
+        className="pointer-coarse:min-h-10 min-w-0 flex-1 text-left"
         title={`Load ${shell.name}`}
       >
         <span className="text-paper block truncate text-[12px]">
@@ -56,7 +56,9 @@ function ShellRow({
           type="button"
           onClick={onDelete}
           title={`Delete ${shell.name}`}
-          className="text-ash hover:text-ember px-1 text-[13px] opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100"
+          // Revealed on hover where there is a pointer to hover with; always
+          // there under a finger, which cannot.
+          className="text-ash hover:text-ember pointer-coarse:min-h-10 pointer-coarse:min-w-10 pointer-coarse:text-[16px] px-1 text-[13px] opacity-70 transition group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:hover)]:opacity-0"
         >
           ×
         </button>

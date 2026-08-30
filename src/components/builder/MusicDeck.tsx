@@ -72,6 +72,11 @@ export interface MusicDeckProps {
   getLive: () => LiveState | null;
   onListen: (source: "tab" | "mic") => void;
   onStopListening: () => void;
+  /**
+   * Drawn inside another panel (the hand-held sheet) rather than floating
+   * over the water: no frame of its own, and nothing to collapse.
+   */
+  embedded?: boolean;
 }
 
 /** The waveform outline, as one filled path in view space. */
@@ -135,6 +140,7 @@ export function MusicDeck(props: MusicDeckProps) {
     listening,
     onSeek,
     onPickFile,
+    embedded = false,
   } = props;
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -143,7 +149,18 @@ export function MusicDeck(props: MusicDeckProps) {
   const stripRef = useRef<SVGSVGElement>(null);
   const meterRef = useRef<HTMLDivElement>(null);
   const liveReadoutRef = useRef<HTMLSpanElement>(null);
-  const [open, setOpen] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
+  const open = embedded || !collapsed;
+  /**
+   * Tab capture is a desktop-browser feature; where the API is missing the
+   * button would only ever show an error, so it stays off the deck.
+   */
+  const [canShareTab, setCanShareTab] = useState(true);
+  useEffect(() => {
+    setCanShareTab(
+      typeof navigator.mediaDevices?.getDisplayMedia === "function",
+    );
+  }, []);
 
   const duration = plan?.duration ?? track?.analysis.duration ?? 0;
 
@@ -261,13 +278,19 @@ export function MusicDeck(props: MusicDeckProps) {
   );
 
   return (
-    <div className="border-seam bg-panel desk-rise pointer-events-auto w-full max-w-[760px] rounded-[5px] border px-3 py-2 backdrop-blur-md">
+    <div
+      className={
+        embedded
+          ? "flex flex-col gap-3"
+          : "border-seam bg-panel desk-rise pointer-events-auto w-full max-w-[760px] rounded-[5px] border px-3 py-2 backdrop-blur-md"
+      }
+    >
       <div className="flex flex-wrap items-center gap-2">
         <Lamp on={Boolean(track)} live={playing} />
         <Eyebrow>Music</Eyebrow>
 
         {track ? (
-          <span className="text-paper max-w-[180px] truncate text-[12px]">
+          <span className="text-paper min-w-0 max-w-[220px] flex-1 truncate text-[12px]">
             {track.name}
           </span>
         ) : listening ? (
@@ -276,18 +299,30 @@ export function MusicDeck(props: MusicDeckProps) {
           </span>
         ) : (
           <span className="text-ash text-[11px]">
-            Drop a track, play the demo, or listen to what is already playing
+            {embedded
+              ? "Play the demo, load a track, or listen to the room"
+              : "Drop a track, play the demo, or listen to what is already playing"}
           </span>
         )}
 
-        <div className="ml-auto flex items-center gap-2">
+        {/*
+         * Sources and transport. Inline at the right on the wide strip; a
+         * full-width grid of thumb-sized buttons inside the sheet.
+         */}
+        <div
+          className={
+            embedded
+              ? "grid w-full grid-cols-2 gap-1.5 sm:flex sm:w-auto sm:flex-1 sm:items-center sm:justify-end"
+              : "ml-auto flex items-center gap-2"
+          }
+        >
           {track ? (
             <>
               <button
                 type="button"
                 onClick={props.onPlayPause}
                 disabled={!plan}
-                className="border-ember/70 bg-ember/20 text-gold hover:bg-ember/35 font-display rounded-[3px] border px-3 py-1 text-[13px] font-bold tracking-[0.12em] uppercase transition-colors disabled:opacity-40"
+                className="border-ember/70 bg-ember/20 text-gold hover:bg-ember/35 font-display pointer-coarse:min-h-10 rounded-[3px] border px-3 py-1 text-[13px] font-bold tracking-[0.12em] uppercase transition-colors disabled:opacity-40"
               >
                 {playing ? "Pause" : "Play"}
               </button>
@@ -306,12 +341,14 @@ export function MusicDeck(props: MusicDeckProps) {
               <DeskButton onClick={() => fileRef.current?.click()}>
                 Load file
               </DeskButton>
-              <DeskButton
-                onClick={() => props.onListen("tab")}
-                title="Share a tab with its audio and fire to whatever it plays"
-              >
-                Listen to a tab
-              </DeskButton>
+              {canShareTab ? (
+                <DeskButton
+                  onClick={() => props.onListen("tab")}
+                  title="Share a tab with its audio and fire to whatever it plays"
+                >
+                  Listen to a tab
+                </DeskButton>
+              ) : null}
               <DeskButton
                 onClick={() => props.onListen("mic")}
                 title="Fire to whatever the microphone hears"
@@ -320,15 +357,17 @@ export function MusicDeck(props: MusicDeckProps) {
               </DeskButton>
             </>
           )}
-          <button
-            type="button"
-            aria-label={open ? "Collapse music deck" : "Expand music deck"}
-            aria-expanded={open}
-            onClick={() => setOpen((value) => !value)}
-            className="text-ash hover:text-paper px-1 text-[11px] transition-colors"
-          >
-            {open ? "▾" : "▸"}
-          </button>
+          {embedded ? null : (
+            <button
+              type="button"
+              aria-label={open ? "Collapse music deck" : "Expand music deck"}
+              aria-expanded={open}
+              onClick={() => setCollapsed((value) => !value)}
+              className="text-ash hover:text-paper px-1 text-[11px] transition-colors"
+            >
+              {open ? "▾" : "▸"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -369,13 +408,14 @@ export function MusicDeck(props: MusicDeckProps) {
             preserveAspectRatio="none"
             role="img"
             aria-label={`Show timeline: ${shells} shells across ${formatTime(duration)}`}
-            className="border-seam mt-2 h-[76px] w-full cursor-pointer rounded-[3px] border bg-black/30"
+            className="border-seam pointer-coarse:h-[96px] mt-2 h-[76px] w-full cursor-pointer touch-none rounded-[3px] border bg-black/30"
             onPointerDown={(event) => {
               event.currentTarget.setPointerCapture(event.pointerId);
               seekFromEvent(event.clientX);
             }}
             onPointerMove={(event) => {
-              if (event.buttons === 1) seekFromEvent(event.clientX);
+              if (event.buttons === 1 || event.pointerType === "touch")
+                seekFromEvent(event.clientX);
             }}
           >
             <title>Show timeline</title>
@@ -451,7 +491,7 @@ export function MusicDeck(props: MusicDeckProps) {
             </div>
             <span
               ref={liveReadoutRef}
-              className="readout text-ash w-[190px] text-right text-[10px]"
+              className="readout text-ash w-[150px] shrink-0 text-right text-[10px] sm:w-[190px]"
             >
               listening for a beat…
             </span>

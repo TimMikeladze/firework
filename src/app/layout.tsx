@@ -52,6 +52,9 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  // Let the desk paint under the notch and the home indicator; the dock pads
+  // itself with the safe-area insets.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

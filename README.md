@@ -29,6 +29,13 @@ Needs a WebGPU browser: current Chrome or Edge, or Safari 26.
   JSON** move a design between machines.
 - **P** plays or pauses a loaded track. Auto-fire stands down while a show is running.
 
+On a phone or tablet the same desk folds into one sheet above the firing dock: **Shell**,
+**Rack**, and **Music** are tabs, the grip drags the sheet between a peek, half, and full
+height (a tap steps through them, and tapping the open tab again puts it away), and the
+struck-through eye in the tab strip hides everything but the sky — **Show desk** brings
+it back. Nothing is left out: every slider, the break chart, the rack, and the music deck
+are all there, just sized for a thumb. Tap the water to fire, drag to look around.
+
 The break chart at the top of the shell card is a live schematic: the altitude column on
 the left is where the shell breaks, the scatter in the middle is the break at its true
 relative size, and the strip underneath is the fuse chain. It reads the same numbers the

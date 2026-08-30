@@ -185,7 +185,7 @@ export function BreakChart({ spec }: { spec: ShellSpec }) {
   const apex = spec.launch.height;
 
   return (
-    <div className="flex gap-3">
+    <div className="flex max-w-[300px] gap-3">
       {/* Altitude column: where the shell breaks, against the water line. */}
       <div className="flex w-9 shrink-0 flex-col items-center justify-between py-1">
         <span className="readout text-gold text-[10px]">

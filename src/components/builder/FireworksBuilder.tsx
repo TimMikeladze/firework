@@ -53,9 +53,37 @@ import {
 } from "./controls";
 import { LayerEditor } from "./LayerEditor";
 import { MusicDeck } from "./MusicDeck";
+import { Sheet, type SheetSnap } from "./Sheet";
 import { ShellRack } from "./ShellRack";
 
 type MobileTab = "shell" | "rack" | "music";
+
+const MOBILE_TABS = [
+  { id: "shell", label: "Shell" },
+  { id: "rack", label: "Rack" },
+  { id: "music", label: "Music" },
+] as const satisfies readonly { id: MobileTab; label: string }[];
+
+/** The one icon on the desk: a struck-through eye, for putting the chrome away. */
+function HideIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 20 20"
+      className="size-[16px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <title>Hide the desk</title>
+      <path d="M2 10s3-5 8-5 8 5 8 5-3 5-8 5-8-5-8-5Z" />
+      <circle cx="10" cy="10" r="2.5" />
+      <path d="M3 17 17 3" />
+    </svg>
+  );
+}
 
 /**
  * Where the music deck lives: a strip over the water on a desk-sized screen,
@@ -112,6 +140,8 @@ export default function FireworksBuilder() {
   const [status, setStatus] = useState<string | null>(null);
   const [gpuError, setGpuError] = useState<string | null>(null);
   const [tab, setTab] = useState<MobileTab>("shell");
+  /** How much of the hand-held sheet is showing. */
+  const [sheet, setSheet] = useState<SheetSnap>("half");
 
   const wide = useWideLayout();
   const [track, setTrack] = useState<Track | null>(null);
@@ -858,34 +888,34 @@ export default function FireworksBuilder() {
     </div>
   );
 
-  const musicDeck = (
-    <MusicDeck
-      track={track}
-      plan={plan}
-      progress={trackProgress}
-      error={musicError}
-      playing={playing}
-      getTime={songTime}
-      density={density}
-      followColors={followColors}
-      musicVolume={musicVolume}
-      syncOffset={syncOffset}
-      onDensity={setDensity}
-      onFollowColors={setFollowColors}
-      onMusicVolume={setMusicVolume}
-      onSyncOffset={setSyncOffset}
-      onPickFile={pickFile}
-      onDemo={useDemoTrack}
-      onPlayPause={togglePlay}
-      onStop={stopMusic}
-      onSeek={seekMusic}
-      onClear={ejectTrack}
-      listening={listening}
-      getLive={liveState}
-      onListen={(source) => void listenTo(source)}
-      onStopListening={stopListening}
-    />
-  );
+  const musicDeckProps = {
+    track,
+    plan,
+    progress: trackProgress,
+    error: musicError,
+    playing,
+    getTime: songTime,
+    density,
+    followColors,
+    musicVolume,
+    syncOffset,
+    onDensity: setDensity,
+    onFollowColors: setFollowColors,
+    onMusicVolume: setMusicVolume,
+    onSyncOffset: setSyncOffset,
+    onPickFile: pickFile,
+    onDemo: useDemoTrack,
+    onPlayPause: togglePlay,
+    onStop: stopMusic,
+    onSeek: seekMusic,
+    onClear: ejectTrack,
+    listening,
+    getLive: liveState,
+    onListen: (source: "tab" | "mic") => void listenTo(source),
+    onStopListening: stopListening,
+  };
+
+  const musicDeck = <MusicDeck {...musicDeckProps} />;
 
   const rack = (
     <ShellRack
@@ -903,8 +933,79 @@ export default function FireworksBuilder() {
     />
   );
 
+  const chromeClass = chromeHidden
+    ? "pointer-events-none opacity-0"
+    : "opacity-100";
+
+  const autoFireControl = (
+    <label className="flex min-w-0 flex-1 items-center gap-2 text-[11px] lg:flex-none">
+      <Lamp on={autoFire > 0} live={autoFire > 0 && !paused} />
+      <span className="text-ash whitespace-nowrap">Auto</span>
+      <input
+        type="range"
+        min={0}
+        max={60}
+        step={1}
+        value={autoFire}
+        aria-label="Auto-fire rate, shells per minute"
+        onChange={(event) => setAutoFire(Number(event.target.value))}
+        style={{ "--fill": `${(autoFire / 60) * 100}%` } as React.CSSProperties}
+        className="min-w-0 flex-1 lg:w-24 lg:flex-none"
+      />
+      <span className="readout text-paper w-12 shrink-0 text-right text-[11px] lg:text-left">
+        {playing || listening
+          ? "synced"
+          : autoFire === 0
+            ? "off"
+            : `${autoFire}/min`}
+      </span>
+    </label>
+  );
+
+  const deskButtons = (
+    <>
+      <DeskButton onClick={randomize} title="Roll a random shell (R)">
+        Roll
+      </DeskButton>
+      <DeskButton
+        onClick={() => {
+          handleRef.current?.clear();
+          setStatus("Sky cleared");
+        }}
+      >
+        Clear
+      </DeskButton>
+      <DeskButton onClick={() => setPaused((value) => !value)}>
+        {paused ? "Resume" : "Freeze"}
+      </DeskButton>
+      <DeskButton
+        onClick={() => setMuted((value) => !value)}
+        title="Mute the reports (M)"
+      >
+        {muted ? "Unmute" : "Mute"}
+      </DeskButton>
+    </>
+  );
+
+  const fireButton = (
+    <button
+      type="button"
+      onClick={fire}
+      className="border-ember/70 bg-ember/20 text-gold hover:bg-ember/35 active:bg-ember/45 font-display max-lg:min-h-11 max-lg:min-w-[7rem] max-lg:rounded-[4px] max-lg:text-[17px] max-lg:tracking-[0.14em] rounded-[3px] border px-4 py-1.5 text-[15px] font-bold tracking-[0.12em] uppercase transition-colors"
+    >
+      Fire
+    </button>
+  );
+
+  const statsReadout = (
+    <span className="readout text-ash text-[10px] whitespace-nowrap">
+      {stats.fps} fps · {stats.particles.toLocaleString()} stars ·{" "}
+      {stats.shells} up
+    </span>
+  );
+
   return (
-    <main className="bg-void relative h-full w-full overflow-hidden">
+    <main className="bg-void relative h-dvh w-full overflow-hidden">
       <canvas
         ref={canvasRef}
         className="absolute inset-0 block h-full w-full touch-none"
@@ -925,42 +1026,48 @@ export default function FireworksBuilder() {
         </div>
       ) : null}
 
-      {/* Masthead. The subtitle is the only instruction the desk needs. */}
+      {/*
+       * Masthead. The subtitle is the only instruction the desk needs, and it
+       * says "tap" or "click" depending on what the user is holding.
+       */}
       <header
-        className={`pointer-events-none absolute top-0 left-0 z-20 p-4 transition-opacity duration-300 md:p-5 ${
-          chromeHidden ? "opacity-0" : "opacity-100"
-        }`}
+        className={`pt-safe pointer-events-none absolute top-0 right-0 left-0 z-20 flex items-start justify-between gap-3 px-4 transition-opacity duration-300 md:p-5 ${chromeClass}`}
       >
-        <h1 className="font-display text-paper text-[26px] leading-none font-extrabold tracking-[0.02em] uppercase md:text-[30px]">
-          Firework<span className="text-ember">.</span>sh
-        </h1>
-        <p className="text-ash mt-1 text-[11px] tracking-wide">
-          Click the water to fire there · Drag to look around · Space fires · H
-          hides the desk
-        </p>
-        {/* Credits. The header ignores pointer events, so the links opt back in. */}
-        <nav className="text-ash pointer-events-auto mt-1.5 flex items-center gap-2 text-[11px] tracking-wide">
-          <Credit href="https://github.com/TimMikeladze">GitHub</Credit>
-          <span className="text-ash/45">·</span>
-          <Credit href="https://linesofcode.dev">linesofcode.dev</Credit>
-          <span className="text-ash/45">·</span>
-          <Credit href="https://x.com/linesofcode">@linesofcode</Credit>
-        </nav>
+        <div className="min-w-0">
+          <h1 className="font-display text-paper text-[24px] leading-none font-extrabold tracking-[0.02em] uppercase md:text-[30px]">
+            Firework<span className="text-ember">.</span>sh
+          </h1>
+          <p className="text-ash mt-1 text-[11px] tracking-wide">
+            <span className="pointer-coarse:hidden">
+              Click the water to fire there · Drag to look around · Space fires
+              · H hides the desk
+            </span>
+            <span className="pointer-coarse:inline hidden">
+              Tap the water to fire · Drag to look around
+            </span>
+          </p>
+          {/* Credits. The header ignores pointer events, so the links opt back in. */}
+          <nav className="text-ash pointer-events-auto mt-1.5 flex items-center gap-2 text-[11px] tracking-wide">
+            <Credit href="https://github.com/TimMikeladze">GitHub</Credit>
+            <span className="text-ash/45">·</span>
+            <Credit href="https://linesofcode.dev">linesofcode.dev</Credit>
+            <span className="text-ash/45">·</span>
+            <Credit href="https://x.com/linesofcode">@linesofcode</Credit>
+          </nav>
+        </div>
+        {/* The frame counter lives in the firing bar on a desk; up here on a phone. */}
+        <div className="shrink-0 pt-1 lg:hidden">{statsReadout}</div>
       </header>
 
-      {/* Desk panels. Hidden entirely on hand-held widths, where the sheet wins. */}
+      {/* Desk panels, floated over the water on a wide screen. */}
       <aside
-        className={`panel-scroll desk-rise border-seam bg-panel absolute top-24 bottom-24 left-4 z-20 hidden w-[248px] overflow-y-auto rounded-[5px] border p-3 backdrop-blur-md transition-opacity duration-300 md:block ${
-          chromeHidden ? "pointer-events-none opacity-0" : "opacity-100"
-        }`}
+        className={`panel-scroll desk-rise border-seam bg-panel absolute top-24 bottom-24 left-4 z-20 hidden w-[248px] overflow-y-auto rounded-[5px] border p-3 backdrop-blur-md transition-opacity duration-300 lg:block ${chromeClass}`}
       >
         {rack}
       </aside>
 
       <aside
-        className={`panel-scroll desk-rise border-seam bg-panel absolute top-6 right-4 bottom-24 z-20 hidden w-[330px] overflow-y-auto rounded-[5px] border p-3 backdrop-blur-md transition-opacity duration-300 lg:block ${
-          chromeHidden ? "pointer-events-none opacity-0" : "opacity-100"
-        }`}
+        className={`panel-scroll desk-rise border-seam bg-panel absolute top-6 right-4 bottom-24 z-20 hidden w-[330px] overflow-y-auto rounded-[5px] border p-3 backdrop-blur-md transition-opacity duration-300 lg:block ${chromeClass}`}
         style={{ animationDelay: "80ms" }}
       >
         {shellCard}
@@ -970,117 +1077,90 @@ export default function FireworksBuilder() {
         <div
           // Centred in the gap between the two desk panels, not the window, so
           // a narrow desktop cannot slide the deck under the shell card.
-          className={`pointer-events-none absolute right-4 bottom-[62px] left-4 z-30 flex justify-center transition-opacity duration-300 lg:right-[352px] lg:left-[268px] ${
-            chromeHidden ? "pointer-events-none opacity-0" : "opacity-100"
-          }`}
+          className={`pointer-events-none absolute right-[352px] bottom-[76px] left-[268px] z-30 hidden justify-center transition-opacity duration-300 lg:flex ${chromeClass}`}
         >
           {musicDeck}
         </div>
       ) : null}
 
-      {/* Firing bar. */}
+      {/*
+       * The bottom of the screen. On a desk it is one floating firing bar; on
+       * a phone it is the sheet with every panel behind a tab strip, sitting
+       * on a two-row dock that keeps Fire under the thumb.
+       */}
       <div
-        className={`absolute inset-x-0 bottom-0 z-30 flex justify-center p-4 transition-opacity duration-300 ${
-          chromeHidden ? "pointer-events-none opacity-0" : "opacity-100"
-        }`}
+        className={`absolute inset-x-0 bottom-0 z-30 flex flex-col transition-opacity duration-300 lg:items-center lg:p-4 ${chromeClass}`}
       >
-        <div className="desk-rise border-seam bg-panel flex max-w-full items-center gap-3 overflow-x-auto rounded-[5px] border px-3 py-2 backdrop-blur-md">
-          <button
-            type="button"
-            onClick={fire}
-            className="border-ember/70 bg-ember/20 text-gold hover:bg-ember/35 font-display rounded-[3px] border px-4 py-1.5 text-[15px] font-bold tracking-[0.12em] uppercase transition-colors"
-          >
-            Fire
-          </button>
-
-          <div className="bg-seam h-6 w-px" />
-
-          <label className="flex items-center gap-2 text-[11px]">
-            <Lamp on={autoFire > 0} live={autoFire > 0 && !paused} />
-            <span className="text-ash whitespace-nowrap">Auto</span>
-            <input
-              type="range"
-              min={0}
-              max={60}
-              step={1}
-              value={autoFire}
-              aria-label="Auto-fire rate, shells per minute"
-              onChange={(event) => setAutoFire(Number(event.target.value))}
-              style={
-                { "--fill": `${(autoFire / 60) * 100}%` } as React.CSSProperties
-              }
-              className="w-24"
-            />
-            <span className="readout text-paper w-12 text-[11px]">
-              {playing || listening
-                ? "synced"
-                : autoFire === 0
-                  ? "off"
-                  : `${autoFire}/min`}
-            </span>
-          </label>
-
-          <div className="bg-seam h-6 w-px" />
-
-          <DeskButton onClick={randomize} title="Roll a random shell (R)">
-            Roll
-          </DeskButton>
-          <DeskButton
-            onClick={() => {
-              handleRef.current?.clear();
-              setStatus("Sky cleared");
-            }}
-          >
-            Clear
-          </DeskButton>
-          <DeskButton onClick={() => setPaused((value) => !value)}>
-            {paused ? "Resume" : "Freeze"}
-          </DeskButton>
-          <DeskButton onClick={() => setMuted((value) => !value)}>
-            {muted ? "Unmute" : "Mute"}
-          </DeskButton>
-
-          <div className="bg-seam h-6 w-px" />
-
-          <span className="readout text-ash hidden text-[10px] whitespace-nowrap md:inline">
-            {stats.fps} fps · {stats.particles.toLocaleString()} stars ·{" "}
-            {stats.shells} up
-          </span>
-        </div>
-      </div>
-
-      {/* Mobile sheet: the same two panels, stacked behind a tab switch. */}
-      <div
-        className={`absolute inset-x-0 bottom-0 z-20 lg:hidden ${
-          chromeHidden ? "hidden" : ""
-        }`}
-      >
-        <div className="border-seam bg-panel panel-scroll mx-2 mb-[68px] max-h-[46vh] overflow-y-auto rounded-[5px] border p-3 backdrop-blur-md">
-          <div className="mb-3 flex gap-1">
-            {(["shell", "rack", "music"] as const).map((value) => (
+        {wide ? null : (
+          <Sheet
+            snap={sheet}
+            onSnap={setSheet}
+            tabs={MOBILE_TABS}
+            tab={tab}
+            onTab={setTab}
+            actions={
               <button
-                key={value}
                 type="button"
-                onClick={() => setTab(value)}
-                className={`eyebrow rounded-[3px] px-2.5 py-1 text-[11px] transition-colors ${
-                  tab === value ? "bg-ember/18 text-gold" : "text-ash"
-                }`}
+                onClick={() => setChromeHidden(true)}
+                aria-label="Hide the desk"
+                title="Hide the desk (H)"
+                className="text-ash hover:text-paper active:bg-riser grid size-10 shrink-0 place-items-center rounded-[4px] transition-colors"
               >
-                {value === "shell"
-                  ? "Shell"
-                  : value === "rack"
-                    ? "Rack"
-                    : "Music"}
+                <HideIcon />
               </button>
-            ))}
+            }
+          >
+            {tab === "shell" ? shellCard : tab === "rack" ? rack : null}
+            {tab === "music" ? (
+              <MusicDeck {...musicDeckProps} embedded />
+            ) : null}
+          </Sheet>
+        )}
+
+        <div className="desk-rise border-seam bg-panel pb-safe flex flex-col gap-2 border-t px-3 pt-2 backdrop-blur-md lg:flex-row lg:items-center lg:gap-3 lg:rounded-[5px] lg:border lg:py-2 [@media(max-height:520px)]:flex-row [@media(max-height:520px)]:items-center">
+          <div className="flex items-center gap-3 lg:contents">
+            {fireButton}
+            <div className="bg-seam h-6 w-px" />
+            {autoFireControl}
           </div>
-          {tab === "shell" ? shellCard : tab === "rack" ? rack : null}
-          {tab === "music" && !wide ? musicDeck : null}
+
+          <div className="bg-seam hidden h-6 w-px lg:block" />
+
+          <div className="grid grid-cols-4 gap-1.5 lg:contents [@media(max-height:520px)]:flex">
+            {deskButtons}
+            {/* The sheet's tab strip carries this one on a phone. */}
+            <span className="hidden lg:contents">
+              <DeskButton
+                onClick={() => setChromeHidden(true)}
+                title="Hide the desk (H)"
+              >
+                Hide
+              </DeskButton>
+            </span>
+          </div>
+
+          <div className="bg-seam hidden h-6 w-px lg:block" />
+
+          <span className="hidden lg:inline">{statsReadout}</span>
         </div>
       </div>
+
+      {/*
+       * The way back once the desk is hidden. Keyboards have H; thumbs get a
+       * pill that stays out of the sky's way.
+       */}
+      {chromeHidden ? (
+        <button
+          type="button"
+          onClick={() => setChromeHidden(false)}
+          className="border-seam bg-panel text-ash hover:text-paper eyebrow absolute right-4 bottom-[max(16px,env(safe-area-inset-bottom))] z-40 rounded-full border px-4 py-2.5 text-[11px] backdrop-blur-md transition-colors"
+        >
+          Show desk
+        </button>
+      ) : null}
 
       {status ? (
-        <output className="border-seam bg-panel text-paper absolute bottom-20 left-1/2 z-40 -translate-x-1/2 rounded-[3px] border px-3 py-1.5 text-[11px] backdrop-blur-md">
+        <output className="border-seam bg-panel text-paper absolute top-[calc(env(safe-area-inset-top)+84px)] left-1/2 z-40 max-w-[calc(100%-32px)] -translate-x-1/2 rounded-[3px] border px-3 py-1.5 text-center text-[11px] backdrop-blur-md lg:top-auto lg:bottom-20">
           {status}
         </output>
       ) : null}

@@ -55,10 +55,13 @@ export function Slider({
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between gap-2">
-        <label htmlFor={id} className="text-ash text-[11px] tracking-wide">
+        <label
+          htmlFor={id}
+          className="text-ash pointer-coarse:text-[12px] text-[11px] tracking-wide"
+        >
           {label}
         </label>
-        <span className="readout text-paper text-[11px]">
+        <span className="readout text-paper pointer-coarse:text-[12px] text-[11px]">
           {value.toFixed(digits)}
           {unit ? <span className="text-ash">{unit}</span> : null}
         </span>
@@ -107,7 +110,7 @@ export function Segmented<T extends string>({
               type="button"
               aria-pressed={active}
               onClick={() => onChange(option)}
-              className={`grow px-2 py-1 text-[11px] whitespace-nowrap transition-colors ${
+              className={`pointer-coarse:min-h-10 pointer-coarse:text-[12px] grow px-2 py-1 text-[11px] whitespace-nowrap transition-colors ${
                 active
                   ? "bg-ember/18 text-gold"
                   : "text-ash hover:bg-riser hover:text-paper"
@@ -134,7 +137,10 @@ export function ColorField({
   const id = useId();
   return (
     <div className="flex items-center justify-between gap-2">
-      <label htmlFor={id} className="text-ash text-[11px] tracking-wide">
+      <label
+        htmlFor={id}
+        className="text-ash pointer-coarse:text-[12px] text-[11px] tracking-wide"
+      >
         {label}
       </label>
       <div className="flex items-center gap-2">
@@ -144,7 +150,7 @@ export function ColorField({
           type="color"
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className="h-6 w-9 rounded-[3px]"
+          className="pointer-coarse:h-9 pointer-coarse:w-12 h-6 w-9 rounded-[3px]"
         />
       </div>
     </div>
@@ -166,16 +172,18 @@ export function Toggle({
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className="group flex items-center gap-2 text-[11px]"
+      className="group pointer-coarse:min-h-10 pointer-coarse:text-[12px] flex items-center gap-2 text-[11px]"
     >
       <span
-        className={`border-seam-bright flex h-[14px] w-[26px] items-center rounded-full border px-[2px] transition-colors ${
+        className={`border-seam-bright pointer-coarse:h-[22px] pointer-coarse:w-[40px] pointer-coarse:px-[3px] flex h-[14px] w-[26px] items-center rounded-full border px-[2px] transition-colors ${
           checked ? "bg-ember/30" : "bg-riser"
         }`}
       >
         <span
-          className={`size-[8px] rounded-full transition-transform ${
-            checked ? "bg-gold translate-x-[12px]" : "bg-seam-bright"
+          className={`pointer-coarse:size-[14px] size-[8px] rounded-full transition-transform ${
+            checked
+              ? "bg-gold pointer-coarse:translate-x-[18px] translate-x-[12px]"
+              : "bg-seam-bright"
           }`}
         />
       </span>
@@ -209,7 +217,7 @@ export function DeskButton({
       title={title}
       disabled={disabled}
       onClick={onClick}
-      className={`rounded-[3px] border px-2.5 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${tones[tone]}`}
+      className={`pointer-coarse:min-h-10 pointer-coarse:px-3 pointer-coarse:text-[12px] rounded-[3px] border px-2.5 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${tones[tone]}`}
     >
       {children}
     </button>
