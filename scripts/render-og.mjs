@@ -254,13 +254,45 @@ const cameraUniform = {
   pad2: 0,
 };
 
-/** Where the last break happened; the water lights from it as a point source. */
-let glowPos = [0, 34, 0];
+/**
+ * The breaks, newest first, lighting the water as point sources. Each one's
+ * intensity follows the spark burn curve, the same way the renderer does it.
+ */
+const waterLights = [];
+const WATER_LIGHTS = 4;
+
+function waterLightIntensity(light, now) {
+  const age = (now - light.at) / Math.max(0.2, light.life);
+  if (age < 0 || age >= 1) return 0;
+  return (
+    light.strength *
+    Math.exp(-2.6 * age) *
+    (1 + 1.2 * Math.exp(-26 * age)) *
+    Math.min(1, (1 - age) / 0.15)
+  );
+}
+
+function packWaterLights(now) {
+  const lights = [];
+  const lightColors = [];
+  for (let i = 0; i < WATER_LIGHTS; i++) {
+    const light = waterLights[i];
+    lights.push(
+      light ? [...light.pos, waterLightIntensity(light, now)] : [0, 0, 0, 0],
+    );
+    lightColors.push(light ? [...light.color, 0] : [0, 0, 0, 0]);
+  }
+  return { lights, lightColors };
+}
+
+/** One pixel's angle for the 52° vertical field of view. */
+const pixelAngle = (2 * Math.tan((52 * Math.PI) / 360)) / HEIGHT;
 
 const emitter = compute(gpu, emitSrc, { label: "emit" });
 const sim = compute(gpu, simSrc, { label: "sim", set: { particles } });
 const skyUniform = {
   invViewProj,
+  viewProj,
   eye,
   time: 6,
   haze: 0.4,
@@ -269,8 +301,11 @@ const skyUniform = {
   waves: 0.09,
   glowColor: [1, 0.6, 0.34],
   waterY: WATER_Y,
-  glowPos,
+  pixelAngle,
   pad0: 0,
+  pad1: 0,
+  pad2: 0,
+  ...packWaterLights(0),
 };
 const sky = effect(gpu, skySrc, {
   set: { sky: skyUniform, mirror, samp: linear },
@@ -413,9 +448,21 @@ const rockets = CUES.map((cue) => {
 
 function breakShell(rocket) {
   const cue = rocket.cue;
-  // The water lights from the most recent break as a point source, so the sky
-  // pass needs to know where it happened.
-  glowPos = [rocket.x, rocket.y, rocket.z];
+  // The water lights from every recent break as a point source, so the sky
+  // pass needs to know where and how big each one was.
+  const first = cue.layers[0];
+  if (first) {
+    const [r, g, b] = hex(first.colorA);
+    const peak = Math.max(r, g, b, 0.0001);
+    waterLights.unshift({
+      pos: [rocket.x, rocket.y, rocket.z],
+      color: [r / peak, g / peak, b / peak],
+      strength: Math.min(2.2, 0.45 + first.count / 4000),
+      at: cue.breakAt,
+      life: first.life * (1 + (first.lifeJitter ?? 0)),
+    });
+    waterLights.length = Math.min(waterLights.length, WATER_LIGHTS);
+  }
   for (const layer of cue.layers) {
     emit({
       ...layer,
@@ -514,9 +561,9 @@ for (let step = 0; step * DT < CAPTURE; step++) {
 }
 
 const shot = { time, first: 0, span: written };
-// `glowPos` moved as shells broke; the effect captured the array it was bound
-// to, so the final position has to be written back before the frame.
-sky.set({ sky: { ...skyUniform, glowPos } });
+// The lights arrived as shells broke, so they are packed for the captured
+// instant only now.
+sky.set({ sky: { ...skyUniform, ...packWaterLights(CAPTURE) } });
 sparks.set({
   camera: cameraUniform,
   params: { ...sparkParams(false), ...shot },

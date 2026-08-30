@@ -2,21 +2,34 @@
 // Drawn as a fullscreen effect before the sparks, so it doubles as the clear for
 // the HDR scene target.
 //
-// The water is a real ray-plane intersection, not a mirrored ray: every pixel
+// The water is a real ray-surface intersection, not a mirrored ray: every pixel
 // below the horizon knows where on the sea it landed and how far away that is,
 // which is what lets the wave detail, the reflection sharpness, and the fog all
-// fall out of the same distance.
+// fall out of the same distance. The reflection is then looked up along the
+// ray the wave facet actually reflects, projected back to the screen, so the
+// image in the water is displaced by the real geometry rather than by a
+// screen-space offset that only looks right from one place.
 
-import { HORIZON_FOG, oceanNormal, oceanSlope, seaGlint, seaRoughness, skyColor, skyGradient } from "./water.wgsl";
+import {
+  HORIZON_FOG, fresnelWater, ggxD, ggxVisibility, oceanHeight, oceanNormal, oceanWave,
+  OCTAVES, breakHalo, seaAlpha, seaGlint, skyColor, skyGradient,
+} from "./water.wgsl";
+
+/// Breaks the water lights from at once. A show has several shells burning at
+/// a time, and each lays its own path across the water.
+const LIGHTS: i32 = 4;
 
 struct SkyParams {
   /// Inverse of the camera's view-projection, for reconstructing view rays.
   invViewProj: mat4x4f,
+  /// The camera's view-projection, for projecting reflected rays back to the
+  /// screen the mirror target was drawn with.
+  viewProj: mat4x4f,
   eye: vec3f,
   time: f32,
   /// 0..1 — smoke and haze sitting on the water.
   haze: f32,
-  /// Ambient light the recent breaks are throwing onto the scene.
+  /// Ambient light the recent breaks are throwing onto the sky.
   glow: f32,
   /// 0..1 — how much of the show the water throws back.
   reflection: f32,
@@ -26,9 +39,16 @@ struct SkyParams {
   glowColor: vec3f,
   /// Height of the water plane in world space.
   waterY: f32,
-  /// Where the last break happened, so the water can light from it directly.
-  glowPos: vec3f,
+  /// Angular size of one pixel, radians. Sets the footprint on the water.
+  pixelAngle: f32,
   pad0: f32,
+  pad1: f32,
+  pad2: f32,
+  /// Recent breaks as point lights: xyz is the break position, w its
+  /// intensity. Zero intensity is an empty slot.
+  lights: array<vec4f, 4>,
+  /// Their colours, normalised so w is unused.
+  lightColors: array<vec4f, 4>,
 }
 
 @group(0) @binding(0) var<uniform> sky: SkyParams;
@@ -36,109 +56,187 @@ struct SkyParams {
 @group(0) @binding(1) var mirror: texture_2d<f32>;
 @group(0) @binding(2) var samp: sampler;
 
-/// Colour of the sea where the view ray `dir` hits it. `uv` is the pixel's own
-/// screen coordinate, which is where the mirror target is sampled from.
-fn waterColor(dir: vec3f, uv: vec2f) -> vec3f {
+/// Light from every recent break scattered toward the eye by the haze along
+/// `dir`. Added to the sky directly and to its reflection, where the wave
+/// normal bends it — which is what lets a burst light the swell around it.
+fn haloLight(dir: vec3f) -> vec3f {
+  var halo = vec3f(0.0);
+  for (var i = 0; i < LIGHTS; i = i + 1) {
+    let light = sky.lights[i];
+    if (light.w <= 0.0) {
+      continue;
+    }
+    let toLight = normalize(light.xyz - sky.eye);
+    halo += sky.lightColors[i].rgb * breakHalo(dir, toLight, light.w, sky.haze);
+  }
+  return halo;
+}
+
+/// Screen coordinate of a world point, in the mirror target's top-origin UV.
+fn projectUV(p: vec3f) -> vec2f {
+  let clip = sky.viewProj * vec4f(p, 1.0);
+  let ndc = clip.xy / max(clip.w, 1e-4);
+  return vec2f(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+}
+
+/// One tap of the mirror target, faded to nothing past the frame edge: a
+/// clamped sample there smears the last column of the image into a streak.
+fn mirrorTap(uv: vec2f) -> vec3f {
+  let edge = smoothstep(vec2f(0.0), vec2f(0.03), uv) * smoothstep(vec2f(1.0), vec2f(0.97), uv);
+  return textureSampleLevel(mirror, samp, clamp(uv, vec2f(0.0), vec2f(1.0)), 0.0).rgb * edge.x * edge.y;
+}
+
+/// Where the mirror target shows a facet with normal `normal` reflecting from
+/// `hit`. The reflected ray is folded back through the plane and run down to
+/// the depth of the virtual image, and that point is projected with the same
+/// camera the mirror pass used. Exact for anything at the break height, and a
+/// smooth distortion of everything else.
+fn reflectedUV(hit: vec3f, dir: vec3f, normal: vec3f, imageY: f32) -> vec2f {
+  var bounced = reflect(dir, normal);
+  // A facet tipped far enough to reflect the water itself sees the dark sea,
+  // not the sky; flatten it back to grazing rather than sampling nonsense.
+  bounced.y = max(bounced.y, 0.02);
+  let below = vec3f(bounced.x, -bounced.y, bounced.z);
+  let t = (imageY - hit.y) / below.y;
+  return projectUV(hit + below * max(t, 0.0));
+}
+
+/// Colour of the sea where the view ray `dir` hits it.
+fn waterColor(dir: vec3f) -> vec3f {
+  let chop = 0.25 + sky.waves * 1.35;
+  let dropY = min(dir.y, -0.0008);
+
   // Distance to the plane. `dir` is unit, so it doubles as the travel length.
   // The clamp keeps rays that graze the horizon from running to infinity.
-  let dist = (sky.waterY - sky.eye.y) / min(dir.y, -0.0008);
-  let hit = sky.eye + dir * dist;
+  var dist = (sky.waterY - sky.eye.y) / dropY;
+  var hit = sky.eye + dir * dist;
 
   // Pixel footprint on the water: the ray cone widens with distance and lands
-  // at a grazing angle, which stretches it further along the view direction.
-  let footprint = dist * 0.0016 / max(0.012, -dir.y);
-  let detail = 1.0 / max(footprint * 3.2, 1e-4);
+  // at a grazing angle, which stretches it along the view direction.
+  var footprint = dist * sky.pixelAngle / max(0.012, -dir.y);
 
-  let chop = 0.22 + sky.waves * 1.05;
-  let slope = oceanSlope(hit.xz, sky.time, chop, detail);
-  let normal = oceanNormal(slope);
-  let roughness = seaRoughness(footprint, chop);
+  // Parallax: the ray lands on the swell, not on the plane. Two relaxed steps
+  // toward the height field are enough for the crests to lean into the camera
+  // and, near the horizon, to hide the troughs behind them — which is most of
+  // what separates a sea from a plane with a normal map on it. Relaxed, since
+  // a grazing ray can meet a wave more than once and a full step oscillates.
+  for (var i = 0; i < 2; i = i + 1) {
+    let h = oceanHeight(hit.xz, sky.time, chop, footprint);
+    let corrected = (sky.waterY + h - sky.eye.y) / dropY;
+    dist = mix(dist, corrected, 0.7);
+    hit = sky.eye + dir * dist;
+    footprint = dist * sky.pixelAngle / max(0.012, -dir.y);
+  }
 
-  // Schlick against the wave normal, not the flat plane: crests tipped toward
-  // the camera go dark while their backs mirror, and that difference is most of
+  let wave = oceanWave(hit.xz, sky.time, chop, footprint, OCTAVES);
+  let normal = oceanNormal(wave.slope);
+  let alpha = seaAlpha(wave.variance, chop);
+
+  // Fresnel against the facet, not the flat plane: crests tipped toward the
+  // camera go dark while their backs mirror, and that difference is most of
   // what reads as water rather than as a mirror.
-  let cosIncidence = clamp(dot(-dir, normal), 0.0, 1.0);
-  let fresnel = clamp(0.02 + 0.98 * pow(1.0 - cosIncidence, 5.0), 0.0, 1.0);
+  let ndotv = clamp(dot(-dir, normal), 0.0, 1.0);
+  let fresnel = fresnelWater(ndotv);
 
   // Sky half of the reflection, evaluated analytically so it distorts with the
   // real per-pixel normal. A crest can bend the ray below the horizon; flatten
   // those back to grazing rather than returning black.
   let bounced = reflect(dir, normal);
   let skyDir = normalize(vec3f(bounced.x, max(bounced.y, 0.003), bounced.z));
-  // Cooled a little. A mirror does not tint, but the sea is never a clean one:
-  // the light that comes back has been through the top of the water column,
-  // which eats the red end first.
-  let mirrored = skyColor(skyDir, sky.time, mix(0.5, 0.0, roughness), sky.glow, sky.glowColor)
-    * vec3f(0.82, 0.90, 1.04);
+  // Stars only survive in a surface smooth enough to resolve a point source.
+  let starScale = smoothstep(0.12, 0.02, alpha);
+  let mirrored = skyColor(skyDir, sky.time, starScale, sky.glow, sky.glowColor) + haloLight(skyDir);
 
-  // Show half of the reflection. The mirror target holds the sparks reflected
-  // through the plane and drawn with this camera, so flat water would sample it
-  // at exactly this pixel. Splitting the slope into the components along and
-  // across the view direction displaces the sample instead: tipping a crest
-  // toward the camera slides the image up the screen, which is what smears a
-  // single burst into a long shimmering path.
-  let viewXZ = normalize(vec2f(dir.x, dir.z) + vec2f(1e-5, 0.0));
-  let along = dot(slope, viewXZ);
-  let across = dot(slope, vec2f(-viewXZ.y, viewXZ.x));
-  // `uv` grows downward, hence the sign on the vertical term.
-  let bend = vec2f(across * 0.16, -along * 0.55) * mix(0.5, 1.0, roughness);
+  // Glints. The specular lobe is the *expected* reflection from the facets a
+  // pixel covers; when the pixel holds only a handful, the number aligned at
+  // any instant is a small count, and that variance is the sparkle. Built
+  // once per pixel and shared by the reflection and every light: the same
+  // facets are aligned for all of them. A near pixel holds a few facets and
+  // sparkles hard, a far one averages thousands and smooths out, and glassy
+  // water has no facets to speak of and stays a clean mirror.
+  let viewXZ = normalize(vec3f(dir.x, 0.0, dir.z) + vec3f(1e-5, 0.0, 0.0));
+  let footAcross = dist * sky.pixelAngle;
+  let glint = seaGlint(hit.xz, viewXZ.xz, footAcross, footprint, sky.time);
+  let sparkle = mix(0.75, 0.3, smoothstep(0.1, 4.0, footprint)) * smoothstep(0.03, 0.09, alpha);
+  let twinkle = mix(1.0, glint, sparkle);
 
-  // Taps run up the screen from the sample point, which drags the mirrored
-  // burst down toward the camera: that one-sided smear is the glitter path a
-  // point source lays across open water, and it is why the reflection is a
-  // shimmering column rather than a second copy of the burst.
-  let smear = 0.004 + roughness * 0.055;
-  var show = vec3f(0.0);
-  var weight = 0.0;
-  for (var i = 0; i < 6; i = i + 1) {
-    let w = 1.0 / (1.0 + f32(i) * 0.85);
-    let offset = bend - vec2f(0.0, f32(i) * smear);
-    let tap = clamp(uv + offset, vec2f(0.002), vec2f(0.998));
-    show += textureSampleLevel(mirror, samp, tap, 0.0).rgb * w;
-    weight += w;
+  // Show half of the reflection. The virtual image sits as far below the
+  // water as the break sits above it, so the sample point is projected at that
+  // depth: an exact planar reflection for the break, displaced by the facet.
+  var imageY = sky.waterY - 30.0;
+  if (sky.lights[0].w > 0.0) {
+    imageY = 2.0 * sky.waterY - sky.lights[0].y;
   }
-  show *= sky.reflection / weight;
-
-  // The break as a point light, for everything the reflection alone cannot do.
-  let toLight = sky.glowPos - hit;
-  let lightDist = max(length(toLight), 1.0);
-  let lightDir = toLight / lightDist;
-  // Inverse-square, so a break genuinely lights the patch of sea beneath it and
-  // leaves the rest of the bay dark.
-  let falloff = sky.glow * 260.0 / (lightDist * lightDist);
+  let uv0 = reflectedUV(hit, dir, normal, imageY);
+  // The facets the pixel could not resolve blur the image. Tilting the normal
+  // by the roughness along the view direction and projecting again gives that
+  // blur its screen-space size and direction for free — long down the screen,
+  // narrow across it, exactly the stretch a rough sea gives a reflection.
+  let tilted = normalize(normal + viewXZ * alpha * 0.8);
+  let uv1 = reflectedUV(hit, dir, tilted, imageY);
+  let smear = uv1 - uv0;
+  var show = mirrorTap(uv0) * 0.30;
+  show += (mirrorTap(uv0 + smear * 0.5) + mirrorTap(uv0 - smear * 0.5)) * 0.22;
+  show += (mirrorTap(uv0 + smear) + mirrorTap(uv0 - smear)) * 0.13;
+  // Fresnel weights the image, but does not gate it: at the 8% a facet at
+  // this angle really returns, the reflection of a burst that the tonemap has
+  // already clipped to white would vanish into the water. A camera would have
+  // blown the burst out by a couple of stops and kept the reflection; the
+  // floor stands in for that exposure, and so does the roughness term — a
+  // rough sea spreads the same light over far more water, and what the
+  // tonemap takes from the spread-out version a camera would have given back.
+  show *= sky.reflection * (0.5 + 1.5 * fresnel) * (1.0 + 8.0 * alpha) * twinkle;
 
   // Deep water at night is nearly black. What little comes back from below the
-  // surface is the break's light, scattered back up through the top of the
+  // surface is the breaks' light, scattered back up through the top of the
   // water column — which is why it arrives green-blue however warm the shell.
-  let deep = vec3f(0.0012, 0.0044, 0.0079);
-  let subsurface = sky.glowColor * vec3f(0.35, 0.8, 1.0)
-    * falloff * max(lightDir.y, 0.0) * (0.35 + 0.65 * max(normal.y, 0.0));
+  var body = vec3f(0.0012, 0.0044, 0.0079);
+  var specular = vec3f(0.0);
 
-  var color = mix(deep + subsurface, mirrored, fresnel);
-  // The show reflects a little even head-on — a bright source over dark water
-  // is visible at any angle — so the Fresnel term only weights it, never gates
-  // it entirely.
-  color += show * (0.6 + 0.8 * fresnel);
+  for (var i = 0; i < LIGHTS; i = i + 1) {
+    let light = sky.lights[i];
+    if (light.w <= 0.0) {
+      continue;
+    }
+    let toLight = light.xyz - hit;
+    let lightDist = max(length(toLight), 1.0);
+    let lightDir = toLight / lightDist;
+    let ndotl = dot(normal, lightDir);
+    if (ndotl <= 0.0) {
+      continue;
+    }
+    // Inverse-square, so a break genuinely lights the patch of sea beneath it
+    // and leaves the rest of the bay dark.
+    let irradiance = light.w * 220.0 / (lightDist * lightDist);
+    let tint = sky.lightColors[i].rgb;
 
-  // Specular from that same light. The mirror target gives the reflection its
-  // shape; this gives it the long shimmering path a sea lays under any bright
-  // source. No screen-space smear can fake that path — it exists because facets
-  // all the way back to the camera happen to catch the light, not because the
-  // image is blurred.
-  if (sky.glow > 0.0 && lightDir.y > 0.0) {
+    // Scattered back out of the top of the water column, so it lights the
+    // faces of the swell turned toward the break and cools toward blue-green.
+    body += tint * vec3f(0.55, 0.85, 1.0) * irradiance * ndotl * 0.1;
+
+    // GGX from the break as a point light, roughened by exactly what the
+    // level of detail threw away: near water resolves its own facets and
+    // sparkles, far water stands in for the ones it dropped with a wide
+    // lobe. No screen-space smear can fake the long path this lays across
+    // the water — it exists because facets all the way back to the camera
+    // happen to catch the light, not because the image is blurred.
     let halfway = normalize(lightDir - dir);
     let ndoth = max(dot(normal, halfway), 0.0);
-    // GGX, roughened by exactly what the level of detail threw away: near water
-    // resolves its own facets and wants a tight lobe, far water has to stand in
-    // for the ones it dropped.
-    let alpha = clamp(0.035 + roughness * 0.36, 0.02, 0.6);
-    let a2 = alpha * alpha;
-    let denom = ndoth * ndoth * (a2 - 1.0) + 1.0;
-    var glint = a2 / (3.14159265 * denom * denom);
-    glint *= fresnel * falloff * 2.7;
-    glint *= 0.18 + seaGlint(hit.xz, max(footprint * 2.4, 0.04), sky.time);
-    color += sky.glowColor * min(glint, 40.0);
+    let vdoth = max(dot(-dir, halfway), 0.0);
+    let d = ggxD(ndoth, alpha);
+    let vis = ggxVisibility(ndotl, max(ndotv, 1e-3), alpha);
+    let f = fresnelWater(vdoth);
+    // A resolved facet is a mirror the size of a pixel and can throw the whole
+    // source back at once; cap it where the bloom takes over anyway.
+    specular += tint * min(d * vis * f * ndotl * irradiance * twinkle, 60.0);
   }
+  // On glassy water the mirror image already is the reflection, and a point
+  // light on top of it would draw a second, airbrushed copy of the break.
+  // The lobe stands in for the facets the image cannot resolve, so it earns
+  // its keep in proportion to how many of those there are.
+  specular *= 0.25 + 0.75 * smoothstep(0.03, 0.12, alpha);
+
+  var color = mix(body, mirrored, fresnel) + show * fresnel + specular;
 
   // Distance fog. The far water fades toward the sky immediately above the
   // waterline in the same compass direction, not toward a constant: mixing to a
@@ -158,9 +256,9 @@ fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
 
   var color: vec3f;
   if (dir.y >= 0.0 || sky.eye.y <= sky.waterY) {
-    color = skyColor(dir, sky.time, 1.0, sky.glow, sky.glowColor);
+    color = skyColor(dir, sky.time, 1.0, sky.glow, sky.glowColor) + haloLight(dir);
   } else {
-    color = waterColor(dir, uv);
+    color = waterColor(dir);
   }
 
   // Haze band hugging the horizon, thickest right at eye level.

@@ -121,14 +121,9 @@ fn vs_main(@builtin(vertex_index) vertex: u32, @builtin(instance_index) instance
   let offset2d = acrossAxis * (local.x * radius) + alongAxis * (local.y * radius * stretch);
   let world = center + camera.right * offset2d.x + camera.up * offset2d.y;
 
-  if (mirrored) {
-    // Water swallows the far end of a reflection: the deeper the virtual image
-    // sits, the longer the path back to the eye. The surface itself applies
-    // Fresnel and the reflection strength, so neither belongs here.
-    let depth = max(0.0, params.waterY - world.y);
-    intensity *= 1.05 * exp(-depth * 0.010);
-    color = mix(color, vec3f(0.18, 0.34, 0.55) * (color.r + color.g + color.b) * 0.33, 0.35);
-  }
+  // The mirror pass draws the virtual image as-is: a surface reflection never
+  // passes through the water, so nothing here tints or attenuates it. Fresnel,
+  // roughness, and the reflection strength are all the water's to apply.
 
   var out: VertexOut;
   out.position = camera.viewProj * vec4f(world, 1.0);

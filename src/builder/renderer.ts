@@ -52,6 +52,57 @@ const PARTICLE_BYTES = 96;
 const WORKGROUP = 64;
 /** The water plane. Everything is built around y = 0. */
 const WATER_Y = 0;
+/** Breaks the water lights from at once; mirrors `LIGHTS` in `sky.wgsl`. */
+const WATER_LIGHTS = 4;
+/** Vertical field of view, degrees. */
+const FOV = 52;
+
+/**
+ * A recent break, lighting the water as a point source. Its intensity follows
+ * the burn curve the sparks themselves use, so the path it lays across the
+ * water dies with the stars and not before them.
+ */
+interface WaterLight {
+  pos: [number, number, number];
+  color: [number, number, number];
+  /** Peak intensity, from the size of the break. */
+  strength: number;
+  /** Seconds since the break. */
+  age: number;
+  /** Burn time of the shell's first layer. */
+  life: number;
+}
+
+function waterLightIntensity(light: WaterLight): number {
+  const age = light.age / Math.max(0.2, light.life);
+  if (age >= 1) return 0;
+  // The spark brightness curve from `sparks.wgsl`: an ignition spike, a long
+  // exponential burn, and a soft death.
+  return (
+    light.strength *
+    Math.exp(-2.6 * age) *
+    (1 + 1.2 * Math.exp(-26 * age)) *
+    Math.min(1, (1 - age) / 0.15)
+  );
+}
+
+/** Packs the lights into the `vec4f` slots the shader reads. */
+function packWaterLights(lights: readonly WaterLight[]) {
+  const positions: [number, number, number, number][] = [];
+  const colors: [number, number, number, number][] = [];
+  for (let i = 0; i < WATER_LIGHTS; i++) {
+    const light = lights[i];
+    const intensity = light ? waterLightIntensity(light) : 0;
+    positions.push(light ? [...light.pos, intensity] : [0, 0, 0, 0]);
+    colors.push(light ? [...light.color, 0] : [0, 0, 0, 0]);
+  }
+  return { lights: positions, lightColors: colors };
+}
+
+/** Angular size of one pixel for a vertical field of view over `height` px. */
+function pixelAngleFor(height: number): number {
+  return (2 * Math.tan((FOV * Math.PI) / 360)) / Math.max(1, height);
+}
 
 function sizeOf(size: readonly [number, number]): [number, number] {
   return [Math.max(1, size[0]), Math.max(1, size[1])];
@@ -227,7 +278,7 @@ async function bootFireworks(
   });
 
   const camera = perspectiveCamera({
-    fov: 52,
+    fov: FOV,
     aspect: view.size[0] / Math.max(1, view.size[1]),
     near: 0.5,
     far: 900,
@@ -264,6 +315,7 @@ async function bootFireworks(
     set: {
       sky: {
         invViewProj,
+        viewProj: camera.viewProjection,
         eye: cameraUniform.eye,
         time: 0,
         haze: options.spec.look.haze,
@@ -272,8 +324,11 @@ async function bootFireworks(
         waves: options.spec.look.waves,
         glowColor: [1, 0.7, 0.45],
         waterY: WATER_Y,
-        glowPos: [0, 30, 0],
+        pixelAngle: pixelAngleFor(view.size[1]),
         pad0: 0,
+        pad1: 0,
+        pad2: 0,
+        ...packWaterLights([]),
       },
       mirror,
       samp: linear,
@@ -413,8 +468,8 @@ async function bootFireworks(
   };
   let ambientGlow = 0;
   let glowTint: [number, number, number] = [1, 0.7, 0.45];
-  /** Where the last break happened; the water lights from it as a point source. */
-  let glowPos: [number, number, number] = [0, 30, 0];
+  /** The most recent breaks, newest first; the water lights from each. */
+  const waterLights: WaterLight[] = [];
   let seedCounter = (Math.random() * 0xffff) | 0;
   let disposed = false;
   const stats: RendererStats = { particles: 0, fps: 0, shells: 0 };
@@ -640,7 +695,18 @@ async function bootFireworks(
       const [r, g, b] = hexToLinear(firstLayer.colorA);
       const peak = Math.max(r, g, b, 0.0001);
       glowTint = [r / peak, g / peak, b / peak];
-      glowPos = [origin[0], origin[1], origin[2]];
+      // Bigger breaks light more water. Newest first, so the reflection pass
+      // can key its depth off the break most likely to be lit.
+      waterLights.unshift({
+        pos: [origin[0], origin[1], origin[2]],
+        color: glowTint,
+        strength:
+          Math.min(2.2, 0.45 + firstLayer.count / 4000) *
+          (1 + design.launch.flash * 0.3),
+        age: 0,
+        life: firstLayer.life * (1 + firstLayer.lifeJitter),
+      });
+      waterLights.length = Math.min(waterLights.length, WATER_LIGHTS);
       // Capped so a barrage cannot stack the horizon glow into daylight.
       ambientGlow = Math.min(
         1.6,
@@ -798,6 +864,13 @@ async function bootFireworks(
       stepShow(dt);
       retireChunks();
       ambientGlow = Math.max(0, ambientGlow - dt * 1.9);
+      for (const light of waterLights) light.age += dt;
+      while (
+        waterLights.length &&
+        waterLightIntensity(waterLights[waterLights.length - 1]) <= 0
+      ) {
+        waterLights.pop();
+      }
     }
 
     const span = Math.min(written - oldest, POOL);
@@ -833,6 +906,7 @@ async function bootFireworks(
     sky.set({
       sky: {
         invViewProj,
+        viewProj: camera.viewProjection,
         eye: cameraUniform.eye,
         time,
         haze: spec.look.haze,
@@ -841,8 +915,11 @@ async function bootFireworks(
         waves: spec.look.waves,
         glowColor: glowTint,
         waterY: WATER_Y,
-        glowPos,
+        pixelAngle: pixelAngleFor(scene.size[1]),
         pad0: 0,
+        pad1: 0,
+        pad2: 0,
+        ...packWaterLights(waterLights),
       },
     });
     sparks.set({
@@ -980,6 +1057,7 @@ async function bootFireworks(
       chunks.length = 0;
       oldest = written;
       ambientGlow = 0;
+      waterLights.length = 0;
     },
     get stats() {
       return stats;

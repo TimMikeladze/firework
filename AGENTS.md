@@ -19,7 +19,13 @@ Uniform structs are mirrored by hand between WGSL and `src/builder/renderer.ts`.
 names must match the WGSL exactly — vgpu binds by name — and every `vec3f` needs its
 padding field, or the values land at the wrong offsets. `scripts/verify-pipeline.mjs` and
 `scripts/render-og.mjs` mirror the same structs a third and fourth time; a field added to
-`SkyParams` has to land in all four or the shader silently reads zero.
+`SkyParams` has to land in all four or the shader silently reads zero. `SkyParams` ends in
+two `array<vec4f, 4>` fields (`lights`, `lightColors`); the JS side hands them over as
+four-element arrays of four-element arrays, and `LIGHTS` in `sky.wgsl` must stay equal to
+`WATER_LIGHTS` in the renderer.
+
+`bun run verify -- --light 0` turns the point lights off, which isolates the mirror
+target's contribution to the water; `--waves` and `--reflection` cover the other knobs.
 
 # The water reflects a pass, not a trick
 
@@ -29,16 +35,32 @@ which is the virtual image a flat mirror shows, so the water samples it at its o
 pixel. That pass has to run *before* the sky pass that reads it, and it has to run even
 when nothing is alive, or a finished burst stays in the water.
 
-`sky.wgsl` intersects the view ray with the plane instead of mirroring the ray, so wave
-scale, reflection sharpness, and fog all follow from one distance. The wave maths lives in
-`water.wgsl`, a pure module with no bindings. Two things there are load-bearing and look
-like tuning: octaves finer than the pixel footprint are faded out and handed back as
-`seaRoughness` (drop the fade and the horizon becomes a shimmering noise band), and the
-sample plane is advected and rotated between octaves (drop that and seven sine ridges
-crossing at fixed angles read as woven fabric, not water).
+`sky.wgsl` intersects the view ray with the plane, parallax-corrects it onto the swell,
+and then looks the reflection up where the facet's reflected ray actually lands: the ray
+is folded back through the plane, run down to the depth of the break's virtual image, and
+projected with `viewProj` — the same camera the mirror pass drew with. That is why
+`SkyParams` carries both `invViewProj` and `viewProj`. The blur is the same projection
+done again with the normal tilted by the roughness, so its size and direction on screen
+are the real ones rather than a constant.
 
-The long shimmering path under a burst is a GGX specular from the break as a point light,
-not a blur of the reflection: `glowPos` has to be updated wherever a shell breaks.
+The wave maths lives in `water.wgsl`, a pure module with no bindings. Several things there
+are load-bearing and look like tuning: octaves finer than the pixel footprint are faded
+out and their slope energy handed back as `variance`, which `seaAlpha` turns into GGX
+roughness on top of a Cox–Munk floor (drop the fade and the horizon becomes a shimmering
+noise band; drop the floor and near water has no sparkle at all); every octave is cut into
+wave groups by two slow envelopes (drop those and each octave is a ridge the eye follows
+to the horizon); octave directions fan out around `WIND` with a spread that widens toward
+the short end (drop the spread and the sea is stripes); and `seaGlint` is sized to the
+pixel footprint in both screen directions, so it neither tiles up close nor aliases far
+away.
+
+The long shimmering path under a burst is a GGX specular from each recent break as a point
+light, multiplied by the glint noise — not a blur of the reflection. The renderer keeps the
+last `WATER_LIGHTS` breaks in `waterLights`, each with an intensity that follows the spark
+burn curve so the path dies with the stars; a new break has to be pushed there, and
+`scripts/render-og.mjs` does the same for its cue sheet. On glassy water the mirror target
+already is the reflection, so the point-light lobe is faded in with roughness to stop it
+drawing a second, airbrushed copy of the break.
 
 # The audio clock owns show timing
 

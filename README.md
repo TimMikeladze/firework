@@ -109,14 +109,20 @@ somewhere and kinematics for a dozen objects is free. Everything else is GPU-sid
    camera. That is exactly the virtual image a flat mirror shows, so the water can look
    its reflection up at its own screen pixel.
 4. **Sea and sky** ([`sky.wgsl`](src/builder/shaders/sky.wgsl), on the maths in
-   [`water.wgsl`](src/builder/shaders/water.wgsl)) — a real ray-plane intersection, so
+   [`water.wgsl`](src/builder/shaders/water.wgsl)) — a real ray-surface intersection, so
    every pixel below the horizon knows where on the sea it landed and how far away that
-   is. Eight octaves of sharp-crested wave, each with its own deep-water speed and each
-   riding on the one before it, give the surface normal; wavelengths finer than the pixel
-   footprint fade out and come back as roughness. From that: Schlick reflectance, the sky
-   mirrored per-pixel, the reflection pass sampled through the wave slope, and a GGX
-   specular from the break itself, which is what lays the long shimmering path across
-   the water.
+   is. Fifteen octaves of sharp-crested wave from a 64 m swell down to 10 cm ripples,
+   spread around a wind direction, each with its own deep-water speed, each riding on
+   the one before it, and each cut into short-crested groups, give the height and the
+   normal; the ray is parallax-corrected onto the swell, and wavelengths finer than the
+   pixel footprint fade out and come back as GGX roughness on top of a Cox–Munk floor.
+   From that: Fresnel per facet, the sky mirrored per-pixel, the reflection pass sampled
+   where the facet's reflected ray really lands (projected back through the camera, not
+   offset in screen space) and blurred by the roughness, a stochastic glint model that
+   turns the smooth lobe into the individual sparkles a sea throws, and a GGX specular
+   from each of the last four breaks as point lights, which is what lays the long
+   shimmering path across the water. The breaks also light the haze around them, and
+   that halo reflects too.
 5. **Draw** — the same stars again, this time above the water, additively into the HDR
    target.
 6. **Composite** — bright pass, separable blur, then a hue-preserving tonemap

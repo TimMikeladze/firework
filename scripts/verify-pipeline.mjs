@@ -51,6 +51,8 @@ const STEPS = Number(flag("steps", 24));
 /** Sea state and mirror strength, for eyeballing the water on its own. */
 const WAVES = Number(flag("waves", 0.45));
 const REFLECTION = Number(flag("reflection", 0.6));
+/** Intensity of the break as a point light on the water; 0 isolates the mirror. */
+const LIGHT = Number(flag("light", 1.2));
 
 function fail(message) {
   console.error(`FAIL  ${message}`);
@@ -114,10 +116,14 @@ const cameraUniform = {
 const emitter = compute(gpu, emitSrc, { label: "emit" });
 const sim = compute(gpu, simSrc, { label: "sim", set: { particles } });
 
+/** One pixel's angle for the 52° vertical field of view above. */
+const pixelAngle = (2 * Math.tan((52 * Math.PI) / 360)) / HEIGHT;
+
 const sky = effect(gpu, skySrc, {
   set: {
     sky: {
       invViewProj,
+      viewProj,
       eye,
       time: 3,
       haze: 0.4,
@@ -126,8 +132,23 @@ const sky = effect(gpu, skySrc, {
       waves: WAVES,
       glowColor: [1, 0.7, 0.45],
       waterY: 0,
-      glowPos: [0, 34, 0],
+      pixelAngle,
       pad0: 0,
+      pad1: 0,
+      pad2: 0,
+      // The burst as a point light, plus three empty slots.
+      lights: [
+        [0, 34, 0, LIGHT],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+      ],
+      lightColors: [
+        [1, 0.7, 0.45, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+      ],
     },
     mirror,
     samp: linear,
