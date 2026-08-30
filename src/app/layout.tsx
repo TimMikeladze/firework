@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Archivo, Big_Shoulders, DM_Mono } from "next/font/google";
 import "./globals.css";
+import { UmamiAnalytics } from "@/components/UmamiAnalytics";
 
 /** Signage condensed — panel headers and control labels. */
 const bigShoulders = Big_Shoulders({
@@ -65,6 +66,7 @@ export default function RootLayout({
     >
       <body className="bg-void text-paper h-full overflow-hidden">
         {children}
+        <UmamiAnalytics />
       </body>
     </html>
   );

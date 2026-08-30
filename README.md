@@ -182,6 +182,25 @@ and demo track — see [`src/game`](src/game) and [`src/components/PulseShow.tsx
 - Every gameplay decision reads `AudioContext.currentTime`;
   `requestAnimationFrame` only decides when that clock is sampled.
 
+## Analytics
+
+Page views go to a self-hosted [Umami](https://umami.is) instance, and only when the
+build was given one. With `NEXT_PUBLIC_UMAMI_WEBSITE_ID` unset — a clone, a fork, `bun run
+dev` — [`UmamiAnalytics`](src/components/UmamiAnalytics.tsx) renders nothing and no
+third-party script is ever fetched.
+
+```bash
+NEXT_PUBLIC_UMAMI_WEBSITE_ID=   # the website UUID; the only required value
+NEXT_PUBLIC_UMAMI_SCRIPT_URL=   # tracker script or instance origin; optional
+NEXT_PUBLIC_UMAMI_DOMAINS=      # hostnames allowed to report, e.g. firework.sh
+```
+
+`NEXT_PUBLIC_*` values are inlined at build time, so changing one on Vercel needs a
+redeploy rather than a restart. `NEXT_PUBLIC_UMAMI_DOMAINS` is what keeps preview
+deployments out of the numbers for the domain people actually visit. See
+[`.env.example`](.env.example), and [`src/analytics/umami.ts`](src/analytics/umami.ts) for
+`trackEvent()` if a custom event is ever worth recording.
+
 ## Stack
 
 Next.js 16, React 19, Tailwind 4, and [vgpu](https://www.npmjs.com/package/vgpu) for
