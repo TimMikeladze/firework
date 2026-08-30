@@ -131,7 +131,7 @@ and the draw never touch a dead slot, and an idle sky costs almost nothing.
 
 `next build` never compiles WGSL, so the shaders have their own gate. `bun run verify`
 resolves and validates every shader against a real device, runs the exact
-emit → simulate → draw → bloom → composite chain the browser runs, and asserts on the
+emit → simulate → reflect → water → draw → bloom → composite chain the browser runs, and asserts on the
 pixels that come back:
 
 ```bash

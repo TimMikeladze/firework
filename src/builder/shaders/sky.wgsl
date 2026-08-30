@@ -7,7 +7,7 @@
 // which is what lets the wave detail, the reflection sharpness, and the fog all
 // fall out of the same distance.
 
-import { HORIZON_FOG, oceanNormal, oceanSlope, seaGlint, seaRoughness, skyColor } from "./water.wgsl";
+import { HORIZON_FOG, oceanNormal, oceanSlope, seaGlint, seaRoughness, skyColor, skyGradient } from "./water.wgsl";
 
 struct SkyParams {
   /// Inverse of the camera's view-projection, for reconstructing view rays.
@@ -144,7 +144,7 @@ fn waterColor(dir: vec3f, uv: vec2f) -> vec3f {
   // waterline in the same compass direction, not toward a constant: mixing to a
   // flat colour leaves a visible seam wherever the sky is warmer or cooler than
   // it, which is exactly along the horizon where the eye is looking.
-  let horizon = skyColor(normalize(vec3f(dir.x, 0.012, dir.z)), sky.time, 0.0, sky.glow, sky.glowColor);
+  let horizon = skyGradient(normalize(vec3f(dir.x, 0.012, dir.z)), sky.glow, sky.glowColor);
   let fog = 1.0 - exp(-dist * 0.0032);
   return mix(color, mix(horizon, HORIZON_FOG * 1.2, 0.35), fog * (0.5 + 0.5 * sky.haze));
 }

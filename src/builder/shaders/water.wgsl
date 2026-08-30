@@ -47,18 +47,29 @@ export fn starField(dir: vec3f, time: f32) -> vec3f {
   return tint * brightness * twinkle * disc * 2.4;
 }
 
-/// Radiance arriving from `dir`. `starScale` fades the star field out for
-/// reflected rays, which a rough surface cannot resolve a point source through.
-export fn skyColor(dir: vec3f, time: f32, starScale: f32, glow: f32, glowColor: vec3f) -> vec3f {
+/// The sky without its stars: the gradient, the shore, and the ambient bounce.
+/// Split out because the water asks for this several times per pixel and the
+/// star field is by far the expensive half.
+export fn skyGradient(dir: vec3f, glow: f32, glowColor: vec3f) -> vec3f {
   let h = clamp(dir.y, -1.0, 1.0);
   let zenith = vec3f(0.0014, 0.0030, 0.0098);
   var color = mix(HORIZON_FOG, zenith, smoothstep(-0.02, 0.6, h));
-  color += starField(dir, time) * smoothstep(0.01, 0.16, h) * starScale;
   // Warm light from a shore too far away to see, banked against the horizon.
   color += vec3f(0.042, 0.021, 0.010) * exp(-max(h, 0.0) * 11.0);
   // Ambient bounce from whatever just exploded. Kept well under the star
   // field: it should warm the horizon, never wash the sky out.
   color += glowColor * glow * 0.012 * exp(-max(h, 0.0) * 7.0);
+  return color;
+}
+
+/// Radiance arriving from `dir`. `starScale` fades the star field out for
+/// reflected rays, which a rough surface cannot resolve a point source through;
+/// at zero the star field is skipped outright rather than multiplied away.
+export fn skyColor(dir: vec3f, time: f32, starScale: f32, glow: f32, glowColor: vec3f) -> vec3f {
+  var color = skyGradient(dir, glow, glowColor);
+  if (starScale > 0.001) {
+    color += starField(dir, time) * smoothstep(0.01, 0.16, clamp(dir.y, -1.0, 1.0)) * starScale;
+  }
   return color;
 }
 

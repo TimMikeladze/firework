@@ -8,16 +8,37 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 `next build` runs the vgpu WGSL loader, but the loader never validates: invalid WGSL
 builds and ships. The gate is `bun run verify`, which resolves every shader in
-`src/builder/shaders/` against a real device, runs the full emit → simulate → draw →
-bloom → composite chain headlessly, and asserts on the pixels. Run it after touching any
-`.wgsl` file or any uniform struct that mirrors one.
+`src/builder/shaders/` against a real device, runs the full emit → simulate → reflect →
+water → draw → bloom → composite chain headlessly, and asserts on the pixels. Run it
+after touching any `.wgsl` file or any uniform struct that mirrors one.
 
 `bun run verify -- --pattern <id> --png out.png` renders a single burst pattern to a PNG,
 which is the fastest way to check how a change actually looks without a browser.
 
 Uniform structs are mirrored by hand between WGSL and `src/builder/renderer.ts`. Field
 names must match the WGSL exactly — vgpu binds by name — and every `vec3f` needs its
-padding field, or the values land at the wrong offsets.
+padding field, or the values land at the wrong offsets. `scripts/verify-pipeline.mjs` and
+`scripts/render-og.mjs` mirror the same structs a third and fourth time; a field added to
+`SkyParams` has to land in all four or the shader silently reads zero.
+
+# The water reflects a pass, not a trick
+
+The reflection is a real pass. `sparks.wgsl` draws every star twice: once as itself, and
+once flipped through the water plane into the `mirror` target with the camera untouched —
+which is the virtual image a flat mirror shows, so the water samples it at its own screen
+pixel. That pass has to run *before* the sky pass that reads it, and it has to run even
+when nothing is alive, or a finished burst stays in the water.
+
+`sky.wgsl` intersects the view ray with the plane instead of mirroring the ray, so wave
+scale, reflection sharpness, and fog all follow from one distance. The wave maths lives in
+`water.wgsl`, a pure module with no bindings. Two things there are load-bearing and look
+like tuning: octaves finer than the pixel footprint are faded out and handed back as
+`seaRoughness` (drop the fade and the horizon becomes a shimmering noise band), and the
+sample plane is advected and rotated between octaves (drop that and seven sine ridges
+crossing at fixed angles read as woven fabric, not water).
+
+The long shimmering path under a burst is a GGX specular from the break as a point light,
+not a blur of the reflection: `glowPos` has to be updated wherever a shell breaks.
 
 # The audio clock owns show timing
 
