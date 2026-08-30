@@ -1,5 +1,5 @@
-import PulseShow from "@/components/PulseShow";
+import FireworksBuilder from "@/components/builder/FireworksBuilder";
 
 export default function Home() {
-  return <PulseShow />;
+  return <FireworksBuilder />;
 }

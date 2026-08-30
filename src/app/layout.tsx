@@ -1,25 +1,34 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Archivo, Big_Shoulders, DM_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+/** Signage condensed — panel headers and control labels. */
+const bigShoulders = Big_Shoulders({
+  variable: "--font-big-shoulders",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+/** Industrial grotesk — everything you read as a sentence. */
+const archivo = Archivo({
+  variable: "--font-archivo",
   subsets: ["latin"],
+});
+
+/** Instrument readouts, so numbers hold their columns while you drag a slider. */
+const dmMono = DM_Mono({
+  variable: "--font-dm-mono",
+  subsets: ["latin"],
+  weight: ["400", "500"],
 });
 
 export const metadata: Metadata = {
-  title: "Pulse Show",
+  title: "Fireworks Builder",
   description:
-    "A rhythm game where hitting the beat launches fireworks over a night skyline.",
+    "Design a firework shell — pattern, colours, physics, timing — and fire it over the water.",
 };
 
 export const viewport: Viewport = {
-  themeColor: "#01030a",
+  themeColor: "#08090b",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -33,9 +42,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${bigShoulders.variable} ${archivo.variable} ${dmMono.variable} h-full antialiased`}
     >
-      <body className="h-full overflow-hidden bg-black text-white">
+      <body className="bg-void text-paper h-full overflow-hidden">
         {children}
       </body>
     </html>

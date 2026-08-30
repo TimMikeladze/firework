@@ -1,3 +1,9 @@
+// Section shape comes from the analysis pass, which the builder shares.
+import type { Section } from "@/audio/analysis";
+
+export type { Section, SectionKind } from "@/audio/analysis";
+export { sectionAt } from "@/audio/analysis";
+
 export const LANE_COUNT = 4;
 
 export const LANE_KEYS = ["KeyD", "KeyF", "KeyJ", "KeyK"] as const;
@@ -23,22 +29,6 @@ export type Judgement = "perfect" | "great" | "good" | "miss";
  * long streak shouldn't wipe out the escalation the player built up.
  */
 export const COMBO_GRACE = 2;
-
-export type SectionKind =
-  | "intro"
-  | "verse"
-  | "build"
-  | "chorus"
-  | "drop"
-  | "outro";
-
-export interface Section {
-  /** Seconds from song start. */
-  time: number;
-  kind: SectionKind;
-  /** 0..1 — drives burst size, particle count, palette heat. */
-  intensity: number;
-}
 
 export interface Note {
   /** Seconds from song start; the hit target relative to audio clock. */
@@ -106,13 +96,4 @@ export function grade(acc: number): string {
   if (acc >= 0.72) return "B";
   if (acc >= 0.55) return "C";
   return "D";
-}
-
-export function sectionAt(sections: Section[], time: number): Section {
-  let current = sections[0];
-  for (const s of sections) {
-    if (s.time <= time) current = s;
-    else break;
-  }
-  return current ?? { time: 0, kind: "verse", intensity: 0.5 };
 }
