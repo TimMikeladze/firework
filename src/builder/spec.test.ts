@@ -38,7 +38,7 @@ describe("parseShell", () => {
       name: "x".repeat(500),
       launch: { height: 1e9, tilt: -1e9, flash: 5 },
       physics: { gravity: -100, turbulence: Number.NaN },
-      look: { exposure: 0, bloom: 99 },
+      look: { exposure: 0, bloom: 99, waves: 4 },
       layers: [{ count: 1e9, life: -3, size: 0, drag: "nope", pattern: "wat" }],
     });
 
@@ -51,10 +51,21 @@ describe("parseShell", () => {
     expect(parsed.physics.turbulence).toBe(defaultShell().physics.turbulence);
     expect(parsed.look.exposure).toBeGreaterThanOrEqual(0.2);
     expect(parsed.look.bloom).toBe(2);
+    expect(parsed.look.waves).toBe(1);
     expect(parsed.layers[0].count).toBeLessThanOrEqual(20000);
     expect(parsed.layers[0].life).toBeGreaterThanOrEqual(0.15);
     // An unknown pattern falls back rather than reaching the GPU as `undefined`.
     expect(parsed.layers[0].pattern).toBe("sphere");
+  });
+
+  test("a shell saved before the water had a sea state still loads", () => {
+    // Older saves have no `look.waves`; the field has to default rather than
+    // reach the shader as undefined and flatten the sea to glass.
+    const parsed = parseShell({
+      look: { bloom: 1.2, exposure: 1, reflection: 0.6, haze: 0.4 },
+    });
+    expect(parsed.look.waves).toBe(defaultShell().look.waves);
+    expect(parsed.look.reflection).toBe(0.6);
   });
 
   test("keeps at most four layers", () => {

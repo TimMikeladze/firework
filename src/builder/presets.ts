@@ -86,7 +86,7 @@ export const PRESETS: readonly ShellSpec[] = [
         stretch: 0.6,
       }),
     ],
-    look: { bloom: 1.1, exposure: 1, reflection: 0.7, haze: 0.45 },
+    look: { bloom: 1.1, exposure: 1, reflection: 0.7, waves: 0.3, haze: 0.45 },
   }),
 
   preset("preset-crimson-ring", "Crimson Ring", {
@@ -162,7 +162,7 @@ export const PRESETS: readonly ShellSpec[] = [
         stretch: 0.75,
       }),
     ],
-    look: { bloom: 1.25, exposure: 1, reflection: 0.6, haze: 0.5 },
+    look: { bloom: 1.25, exposure: 1, reflection: 0.6, waves: 0.5, haze: 0.5 },
   }),
 
   preset("preset-emerald-crossette", "Emerald Crossette", {
@@ -270,7 +270,7 @@ export const PRESETS: readonly ShellSpec[] = [
         stretch: 0,
       }),
     ],
-    look: { bloom: 1.4, exposure: 1, reflection: 0.5, haze: 0.35 },
+    look: { bloom: 1.4, exposure: 1, reflection: 0.5, waves: 0.6, haze: 0.35 },
   }),
 
   preset("preset-sapphire-rings", "Sapphire Rings", {
@@ -346,7 +346,13 @@ export const PRESETS: readonly ShellSpec[] = [
         spin: 3.2,
       }),
     ],
-    look: { bloom: 1.2, exposure: 1.05, reflection: 0.65, haze: 0.4 },
+    look: {
+      bloom: 1.2,
+      exposure: 1.05,
+      reflection: 0.65,
+      waves: 0.35,
+      haze: 0.4,
+    },
   }),
 
   preset("preset-chrysanthemum", "Chrysanthemum Rain", {
@@ -396,7 +402,7 @@ export const PRESETS: readonly ShellSpec[] = [
         inherit: 0,
       }),
     ],
-    look: { bloom: 1.15, exposure: 1, reflection: 0.6, haze: 0.55 },
+    look: { bloom: 1.15, exposure: 1, reflection: 0.6, waves: 0.7, haze: 0.55 },
   }),
 ];
 

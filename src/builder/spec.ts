@@ -146,6 +146,8 @@ export interface LookSpec {
   exposure: number;
   /** 0..1 — how much the water mirrors the show. 0 disables the mirror pass. */
   reflection: number;
+  /** 0..1 — sea state. 0 is a still pond, 1 is a choppy swell. */
+  waves: number;
   /** 0..1 — haze/smoke sitting over the water. */
   haze: number;
 }
@@ -218,7 +220,7 @@ export function defaultShell(overrides: Partial<ShellSpec> = {}): ShellSpec {
     },
     layers: [defaultLayer()],
     physics: { gravity: 9.4, drag: 0.35, wind: 0.6, turbulence: 0.35 },
-    look: { bloom: 1, exposure: 1, reflection: 0.55, haze: 0.4 },
+    look: { bloom: 1, exposure: 1, reflection: 0.55, waves: 0.45, haze: 0.4 },
     audio: { enabled: true, boom: 0.7, crackle: 0.5 },
     ...overrides,
   };
@@ -333,6 +335,7 @@ export function parseShell(input: unknown): ShellSpec {
       bloom: clampNumber(look.bloom, 0, 2, base.look.bloom),
       exposure: clampNumber(look.exposure, 0.2, 2.5, base.look.exposure),
       reflection: clampNumber(look.reflection, 0, 1, base.look.reflection),
+      waves: clampNumber(look.waves, 0, 1, base.look.waves),
       haze: clampNumber(look.haze, 0, 1, base.look.haze),
     },
     audio: {

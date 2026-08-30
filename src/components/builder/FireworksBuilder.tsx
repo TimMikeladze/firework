@@ -757,6 +757,14 @@ export default function FireworksBuilder() {
           }
         />
         <Slider
+          label="Waves"
+          value={spec.look.waves}
+          min={0}
+          max={1}
+          step={0.01}
+          onChange={(waves) => patch({ look: { ...spec.look, waves } })}
+        />
+        <Slider
           label="Haze"
           value={spec.look.haze}
           min={0}

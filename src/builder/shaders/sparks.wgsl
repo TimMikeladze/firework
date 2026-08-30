@@ -1,8 +1,10 @@
 // Draws the live sparks as camera-facing quads, additively, in one draw call.
 //
-// Instances [0, span) are the sparks themselves; instances [span, 2*span) are
-// their mirror images in the water. Doing both from one instance stream avoids
-// a second draw whose uniforms would have to differ inside the same frame.
+// The same shader draws the show and its reflection. With `mirror` set, every
+// spark is flipped through the water plane and rendered with the unchanged
+// camera, which is exactly the virtual image a flat mirror would show — so the
+// water pass can look the reflection up at its own screen pixel. Two Draws bind
+// this shader, because passes in one frame cannot share uniforms.
 
 import { Particle, KIND_FLASH, KIND_TRAIL } from "./common.wgsl";
 
@@ -22,8 +24,8 @@ struct DrawParams {
   first: u32,
   span: u32,
   poolSize: u32,
-  /// 0 disables the mirrored instances entirely (they clip themselves out).
-  reflection: f32,
+  /// 1 flips every spark through the water plane, for the reflection pass.
+  mirror: f32,
   waterY: f32,
   /// Scales every spark; lets the UI keep sizes readable at any zoom.
   sizeScale: f32,
@@ -56,12 +58,8 @@ fn culled() -> VertexOut {
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertex: u32, @builtin(instance_index) instance: u32) -> VertexOut {
-  let mirrored = instance >= params.span;
-  if (mirrored && params.reflection <= 0.0) {
-    return culled();
-  }
-  let slot = select(instance, instance - params.span, mirrored);
-  let p = particles[(params.first + slot) % params.poolSize];
+  let mirrored = params.mirror > 0.5;
+  let p = particles[(params.first + instance) % params.poolSize];
   if (p.life <= 0.0 || p.maxLife <= 0.0) {
     return culled();
   }
@@ -71,9 +69,6 @@ fn vs_main(@builtin(vertex_index) vertex: u32, @builtin(instance_index) instance
   if (mirrored) {
     center.y = 2.0 * params.waterY - center.y;
     velocity.y = -velocity.y;
-    // Surface chop smears the reflection horizontally.
-    center.x += sin(center.z * 1.7 + params.time * 1.9) * 0.09;
-    center.z += cos(center.x * 1.3 - params.time * 1.6) * 0.09;
   }
 
   let age = clamp(1.0 - p.life / p.maxLife, 0.0, 1.0);
@@ -127,8 +122,11 @@ fn vs_main(@builtin(vertex_index) vertex: u32, @builtin(instance_index) instance
   let world = center + camera.right * offset2d.x + camera.up * offset2d.y;
 
   if (mirrored) {
+    // Water swallows the far end of a reflection: the deeper the virtual image
+    // sits, the longer the path back to the eye. The surface itself applies
+    // Fresnel and the reflection strength, so neither belongs here.
     let depth = max(0.0, params.waterY - world.y);
-    intensity *= params.reflection * 0.62 * exp(-depth * 0.022);
+    intensity *= 1.05 * exp(-depth * 0.010);
     color = mix(color, vec3f(0.18, 0.34, 0.55) * (color.r + color.g + color.b) * 0.33, 0.35);
   }
 

@@ -217,6 +217,14 @@ async function bootFireworks(
     format: hdr,
     label: "bloom-b",
   });
+  // The show flipped through the water plane, which the sky pass reads back as
+  // the water's reflection. Half resolution is deliberate: a reflection is
+  // softer than the thing it reflects, so the downsample is free blur.
+  const mirror = target(gpu, {
+    size: halfOf(view.size),
+    format: hdr,
+    label: "mirror",
+  });
 
   const camera = perspectiveCamera({
     fov: 52,
@@ -260,13 +268,30 @@ async function bootFireworks(
         time: 0,
         haze: options.spec.look.haze,
         glow: 0,
-        pad0: 0,
-        pad1: 0,
+        reflection: options.spec.look.reflection,
+        waves: options.spec.look.waves,
         glowColor: [1, 0.7, 0.45],
-        pad2: 0,
+        waterY: WATER_Y,
+        glowPos: [0, 30, 0],
+        pad0: 0,
       },
+      mirror,
+      samp: linear,
     },
   });
+
+  function sparkParams(mirrored: boolean) {
+    return {
+      time: 0,
+      first: 0,
+      span: 0,
+      poolSize: POOL,
+      mirror: mirrored ? 1 : 0,
+      waterY: WATER_Y,
+      sizeScale: 1,
+      pad0: 0,
+    };
+  }
 
   const sparks = draw(gpu, {
     label: "sparks",
@@ -276,16 +301,22 @@ async function bootFireworks(
     instances: 0,
     set: {
       camera: cameraUniform,
-      params: {
-        time: 0,
-        first: 0,
-        span: 0,
-        poolSize: POOL,
-        reflection: options.spec.look.reflection,
-        waterY: WATER_Y,
-        sizeScale: 1,
-        pad0: 0,
-      },
+      params: sparkParams(false),
+      particles,
+    },
+  });
+
+  // Same shader, second Draw: the reflection runs in its own pass, and passes
+  // in one frame cannot share uniforms.
+  const sparksMirror = draw(gpu, {
+    label: "sparks-mirror",
+    shader: sparksShader,
+    blend: "additive",
+    vertices: 6,
+    instances: 0,
+    set: {
+      camera: cameraUniform,
+      params: sparkParams(true),
       particles,
     },
   });
@@ -343,6 +374,7 @@ async function bootFireworks(
     const half = halfOf(size);
     bloomA.resize(half);
     bloomB.resize(half);
+    mirror.resize(half);
     camera.set({ aspect: size[0] / Math.max(1, size[1]) });
     bright.set({
       bright: { texel: scene.texelSize, threshold: 0.32, knee: 0.5 },
@@ -381,6 +413,8 @@ async function bootFireworks(
   };
   let ambientGlow = 0;
   let glowTint: [number, number, number] = [1, 0.7, 0.45];
+  /** Where the last break happened; the water lights from it as a point source. */
+  let glowPos: [number, number, number] = [0, 30, 0];
   let seedCounter = (Math.random() * 0xffff) | 0;
   let disposed = false;
   const stats: RendererStats = { particles: 0, fps: 0, shells: 0 };
@@ -606,6 +640,7 @@ async function bootFireworks(
       const [r, g, b] = hexToLinear(firstLayer.colorA);
       const peak = Math.max(r, g, b, 0.0001);
       glowTint = [r / peak, g / peak, b / peak];
+      glowPos = [origin[0], origin[1], origin[2]];
       // Capped so a barrage cannot stack the horizon glow into daylight.
       ambientGlow = Math.min(
         1.6,
@@ -802,24 +837,21 @@ async function bootFireworks(
         time,
         haze: spec.look.haze,
         glow: ambientGlow,
-        pad0: 0,
-        pad1: 0,
+        reflection: spec.look.reflection,
+        waves: spec.look.waves,
         glowColor: glowTint,
-        pad2: 0,
+        waterY: WATER_Y,
+        glowPos,
+        pad0: 0,
       },
     });
     sparks.set({
       camera: cameraUniform,
-      params: {
-        time,
-        first,
-        span,
-        poolSize: POOL,
-        reflection: spec.look.reflection,
-        waterY: WATER_Y,
-        sizeScale: 1,
-        pad0: 0,
-      },
+      params: { ...sparkParams(false), time, first, span },
+    });
+    sparksMirror.set({
+      camera: cameraUniform,
+      params: { ...sparkParams(true), time, first, span },
     });
     composite.set({
       composite: {
@@ -834,11 +866,17 @@ async function bootFireworks(
       },
     });
 
+    // The reflection has to exist before the water that samples it, and the
+    // pass runs even with nothing alive so a finished burst does not linger in
+    // the water.
+    const reflecting = spec.look.reflection > 0 && span > 0;
+    frame.pass({ target: mirror, clear: [0, 0, 0, 1] }, (pass) => {
+      if (reflecting) pass.draw(sparksMirror, { instances: span });
+    });
     frame.pass(scene, sky);
     if (span > 0) {
-      const instances = spec.look.reflection > 0 ? span * 2 : span;
       frame.pass({ target: scene, clear: false }, (pass) => {
-        pass.draw(sparks, { instances });
+        pass.draw(sparks, { instances: span });
       });
     }
     frame.pass(bloomA, bright);
