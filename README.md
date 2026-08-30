@@ -91,8 +91,8 @@ also the save format. It has four parts:
   time, colours, and its own drag/gravity/twinkle/crackle/tail. A layer's `delay` and
   `startRadius` are what make pistils, secondary breaks, and crossette splits.
 - **Night air** — gravity, air drag, wind, turbulence. Shared by every layer.
-- **Camera and sound** — bloom, exposure, the water mirror, haze, and the synthesized
-  report and crackle.
+- **Camera and sound** — bloom, exposure, the water mirror, the sea state, haze, and the
+  synthesized report and crackle.
 
 ## How it runs
 
@@ -104,10 +104,22 @@ somewhere and kinematics for a dozen objects is free. Everything else is GPU-sid
    write and one dispatch; no particle data ever crosses the bus.
 2. **Simulate** ([`sim.wgsl`](src/builder/shaders/sim.wgsl)) — gravity, wind, exponential
    drag, and a turbulence field, over the live window only.
-3. **Draw** ([`sparks.wgsl`](src/builder/shaders/sparks.wgsl)) — one instanced draw of
-   camera-facing quads, additively, into an HDR target. Instances past the live count are
-   the same stars mirrored in the water.
-4. **Composite** — bright pass, separable blur, then a hue-preserving tonemap
+3. **Reflect** ([`sparks.wgsl`](src/builder/shaders/sparks.wgsl)) — the same instanced
+   draw, with every star flipped through the water plane and rendered with the unchanged
+   camera. That is exactly the virtual image a flat mirror shows, so the water can look
+   its reflection up at its own screen pixel.
+4. **Sea and sky** ([`sky.wgsl`](src/builder/shaders/sky.wgsl), on the maths in
+   [`water.wgsl`](src/builder/shaders/water.wgsl)) — a real ray-plane intersection, so
+   every pixel below the horizon knows where on the sea it landed and how far away that
+   is. Eight octaves of sharp-crested wave, each with its own deep-water speed and each
+   riding on the one before it, give the surface normal; wavelengths finer than the pixel
+   footprint fade out and come back as roughness. From that: Schlick reflectance, the sky
+   mirrored per-pixel, the reflection pass sampled through the wave slope, and a GGX
+   specular from the break itself, which is what lays the long shimmering path across
+   the water.
+5. **Draw** — the same stars again, this time above the water, additively into the HDR
+   target.
+6. **Composite** — bright pass, separable blur, then a hue-preserving tonemap
    ([`composite.wgsl`](src/builder/shaders/composite.wgsl)) so a gold shell stays gold
    instead of clipping to white.
 
@@ -125,6 +137,7 @@ pixels that come back:
 ```bash
 bun run verify                                   # pass/fail on a headless frame
 bun run verify -- --pattern 4 --png willow.png   # render one pattern and look at it
+bun run verify -- --waves 1 --width 1280 --height 720 --png sea.png   # eyeball the water
 bun test                                         # specs, chart maths, choreography, beat tracking
 bun run lint
 ```
@@ -135,6 +148,24 @@ pool, and that the live beat tracker predicts beats seconds ahead of the music.
 
 `--pattern` takes a pattern id from `PATTERN_IDS`; `--count` and `--steps` set the star
 count and how far to simulate before the capture.
+
+## The social card
+
+The image that unfurls on X, LinkedIn and Slack is not artwork. `bun run og` runs a short
+scripted show through the same shader chain headlessly — rockets climb, four shells break
+on a schedule — stops the clock, supersamples it down and writes
+[`public/og/night.png`](public/og/night.png). [`src/app/opengraph-image.tsx`](src/app/opengraph-image.tsx)
+lays the desk back over that plate at build time: the wordmark, one line of copy, and the
+cue rail, with the lit cue sitting directly under the shell breaking above it.
+
+```bash
+bun run og                 # re-render the background plate
+bun run og -- --time 2.1   # stop the clock somewhere else in the show
+bun run og:card out.png    # compose the finished card and look at it
+```
+
+`bun run og:card` calls the route itself, so what lands on disk is what `next build`
+bakes. The plate is committed, so a normal build never touches a GPU.
 
 ## Pulse Show
 

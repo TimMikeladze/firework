@@ -33,3 +33,20 @@ whole show. `requestAnimationFrame` only decides when the audio clock is sampled
 `buildShow()` in `src/builder/choreography.ts` is pure and seeded — same track, same shell,
 same settings, same script — which is what `bun test` leans on. Keep it that way: no
 `Date.now()`, no unseeded randomness, no reaching for the renderer.
+
+# The social card is baked, not live
+
+`public/og/night.png` is a committed frame of the real show, produced by
+`bun run og` (`scripts/render-og.mjs`) through the same emit → sim → draw → bloom →
+composite chain. `next build` never renders it, so touching a shader does not change the
+card — re-run `bun run og` when you want it to.
+
+`src/app/opengraph-image.tsx` composes the type over that plate with `next/og`, and
+`twitter-image.tsx` re-exports it. Iterate with `bun run og:card <out.png>`, which calls
+the route and writes its bytes; there is no need to run a build or a browser. Satori is
+not a browser: every `div` with more than one child needs an explicit `display: flex`,
+and the rail's bar widths are computed from the column width so the cue markers line up
+with the bars.
+
+The matrix helpers both scripts share live in `scripts/lib/mat4.mjs`, in plain ESM with no
+dependencies so they still run under bare `node`.

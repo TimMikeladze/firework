@@ -9,7 +9,9 @@
     "lint": "biome check",
     "format": "biome format --write",
     "test": "bun test",
-    "verify": "node scripts/verify-pipeline.mjs"
+    "verify": "node scripts/verify-pipeline.mjs",
+    "og": "node scripts/render-og.mjs",
+    "og:card": "bun scripts/preview-og.tsx"
   },
   "dependencies": {
     "next": "16.2.12",
