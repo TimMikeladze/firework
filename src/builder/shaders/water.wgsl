@@ -104,8 +104,9 @@ export struct Wave {
 /// as the waves shorten. Swell is coherent and runs with the wind; the ripples
 /// on top of it scatter across a wide fan, which is what a real directional
 /// spectrum looks like and what keeps the sum from reading as one texture.
-fn octaveDir(i: i32) -> vec2f {
-  let spread = 0.28 + f32(i) * 0.11;
+/// A confused, choppy sea has a wider fan still.
+fn octaveDir(i: i32, chop: f32) -> vec2f {
+  let spread = (0.28 + f32(i) * 0.11) * (0.7 + 0.6 * chop);
   let turn = (rand(u32(i) * 0x9e3779b9u + 0x7f4a7c15u) - 0.5) * 2.0 * spread;
   let c = cos(turn);
   let s = sin(turn);
@@ -123,11 +124,16 @@ fn octaveDir(i: i32) -> vec2f {
 /// short end: that is the shape of a wind sea, and it is why the surface has
 /// the same texture at every scale instead of one dominant ripple size.
 ///
+/// `sea` scales the whole spectrum — the sea state. `chop` is how confused it
+/// is: it steepens and sharpens the short end, widens the directional fan,
+/// deepens the groups, and bends the crests, which is the difference between
+/// a long swell under a steady breeze and the same swell with a squall on it.
+///
 /// `footprint` is the pixel's size on the water. Octaves shorter than a few
 /// footprints can only alias, so they fade out and their slope energy is
 /// handed back as `variance` instead: far water is smooth to the eye but
 /// rough to the light, which is exactly what a real sea does at a distance.
-export fn oceanWave(p: vec2f, time: f32, chop: f32, footprint: f32, octaves: i32) -> Wave {
+export fn oceanWave(p: vec2f, time: f32, sea: f32, chop: f32, footprint: f32, octaves: i32) -> Wave {
   var out: Wave;
   out.height = 0.0;
   out.slope = vec2f(0.0);
@@ -139,7 +145,7 @@ export fn oceanWave(p: vec2f, time: f32, chop: f32, footprint: f32, octaves: i32
     let k = TAU / wavelength;
     // Slope amplitude. The swell is gentle and the ripples steep, so most of
     // the slope variance — the glitter — comes from the short end.
-    let steepness = chop * (0.024 + 0.0045 * f32(i));
+    let steepness = sea * (0.024 + 0.0045 * f32(i)) * (1.0 + chop * (0.15 + 0.06 * f32(i)));
     let amplitude = steepness / k;
 
     // Two pixels per wavelength is the Nyquist limit; fade from there to a
@@ -151,13 +157,19 @@ export fn oceanWave(p: vec2f, time: f32, chop: f32, footprint: f32, octaves: i32
     out.variance += 0.2 * steepness * steepness * (1.0 - visible) * (1.0 + visible);
 
     if (visible > 0.002) {
-      let dir = octaveDir(i);
+      let dir = octaveDir(i, chop);
       let perp = vec2f(-dir.y, dir.x);
       let omega = sqrt(GRAVITY * k);
       let along = dot(dir, pos);
-      let phase = along * k - omega * time + f32(i) * 1.7;
+      // Crest bend: a slow sine across the crest, advanced by the phase, so a
+      // choppy sea's crests snake instead of running straight. Differentiated
+      // below along with everything else.
+      let bendPhase = dot(perp, pos) * k * 0.31 + time * 0.9 + f32(i) * 0.4;
+      let bend = chop * 0.9;
+      let phase = along * k - omega * time + f32(i) * 1.7 + bend * sin(bendPhase);
+      let phaseGrad = dir * k + perp * (bend * cos(bendPhase) * k * 0.31);
       // Sharper crests on the short, steep octaves; the long swell stays soft.
-      let sharpness = 0.9 + f32(i) * 0.12;
+      let sharpness = 0.9 + f32(i) * 0.12 + chop * 0.6;
       let shaped = exp(sharpness * (sin(phase) - 1.0));
 
       // Wave groups. An infinite sinusoid is a ridge the eye follows for
@@ -169,14 +181,15 @@ export fn oceanWave(p: vec2f, time: f32, chop: f32, footprint: f32, octaves: i32
       // so the slope stays the true gradient of the height.
       let groupAcross = dot(perp, pos) * k * 0.23 + f32(i) * 2.1;
       let groupAlong = (along * k - omega * time * 0.5) * 0.11 + f32(i) * 0.7;
-      let envAcross = 0.6 + 0.4 * sin(groupAcross);
-      let envAlong = 0.6 + 0.4 * sin(groupAlong);
+      let depth = 0.4 + 0.25 * chop;
+      let envAcross = 1.0 - depth + depth * sin(groupAcross);
+      let envAlong = 1.0 - depth + depth * sin(groupAlong);
       let envelope = envAcross * envAlong;
-      let envelopeGrad = perp * (0.4 * cos(groupAcross) * k * 0.23 * envAlong)
-        + dir * (0.4 * cos(groupAlong) * k * 0.11 * envAcross);
+      let envelopeGrad = perp * (depth * cos(groupAcross) * k * 0.23 * envAlong)
+        + dir * (depth * cos(groupAlong) * k * 0.11 * envAcross);
 
       out.height += amplitude * (shaped - 0.45) * envelope * visible;
-      out.slope += (dir * (steepness * sharpness * cos(phase) * shaped) * envelope
+      out.slope += (phaseGrad * (amplitude * sharpness * cos(phase) * shaped) * envelope
         + envelopeGrad * (amplitude * (shaped - 0.45))) * visible;
 
       // Ride the next octave on this one's back: the horizontal half of a
@@ -191,8 +204,8 @@ export fn oceanWave(p: vec2f, time: f32, chop: f32, footprint: f32, octaves: i32
 
 /// Height only, over the long octaves. The parallax correction calls this
 /// two or three times per pixel, so it stays cheap.
-export fn oceanHeight(p: vec2f, time: f32, chop: f32, footprint: f32) -> f32 {
-  return oceanWave(p, time, chop, footprint, SWELL_OCTAVES).height;
+export fn oceanHeight(p: vec2f, time: f32, sea: f32, chop: f32, footprint: f32) -> f32 {
+  return oceanWave(p, time, sea, chop, footprint, SWELL_OCTAVES).height;
 }
 
 export fn oceanNormal(slope: vec2f) -> vec3f {
@@ -202,8 +215,8 @@ export fn oceanNormal(slope: vec2f) -> vec3f {
 /// GGX roughness for a facet whose sub-pixel structure carried `variance` of
 /// slope. Beckmann's `m = sqrt(2) * sigma` is close enough for GGX, summed in
 /// quadrature with the floor the spectrum never resolves.
-export fn seaAlpha(variance: f32, chop: f32) -> f32 {
-  let floor = ALPHA0 * (0.5 + 0.8 * chop);
+export fn seaAlpha(variance: f32, sea: f32, chop: f32) -> f32 {
+  let floor = ALPHA0 * (0.5 + 0.8 * sea) * (1.0 + 0.5 * chop);
   return clamp(sqrt(floor * floor + 2.0 * variance), floor, 0.7);
 }
 
@@ -241,6 +254,49 @@ export fn seaGlint(p: vec2f, viewXZ: vec2f, across: f32, along: f32, time: f32) 
   let b = glintLayer(vec2f(q.x * 0.71 + q.y * 0.53, q.y * 0.71 - q.x * 0.53) * 1.37, time * 1.13, 0x68bc21ebu);
   // Each layer averages 35/128; the product of two independent ones ~0.0748.
   return a * b * 13.37;
+}
+
+/// Warm-white moonlight, in linear light.
+export const MOON_TINT = vec3f(1.0, 0.94, 0.82);
+
+/// The moon: a phased disc plus its halo in the haze. `toMoon` is the unit
+/// direction to it, `radius` its angular radius in radians, `phase` 0..1 with
+/// 0.5 full and the ends new, `light` the overall brightness.
+///
+/// The disc is shaded as the sphere it is: the sun sits in the moon's own
+/// sky at an angle set by the phase, and each point of the disc is lit by
+/// how squarely it faces that sun. That is what puts the terminator where a
+/// real crescent has it, curved and soft, instead of a clipped circle.
+export fn moonLight(dir: vec3f, toMoon: vec3f, radius: f32, phase: f32, light: f32, haze: f32) -> vec3f {
+  if (light <= 0.0) {
+    return vec3f(0.0);
+  }
+  let cosine = clamp(dot(dir, toMoon), -1.0, 1.0);
+  let angle2 = 2.0 * (1.0 - cosine);
+
+  // Halo: forward scattering in the haze, with the long Lorentzian tail a
+  // real one has. Reaches a fair way across the sky on a hazy night.
+  var color = MOON_TINT * light * (0.3 + 0.7 * haze) * 0.0012 / (angle2 + 0.002);
+
+  // Disc. A basis across the disc: `right` is level, `up` completes it.
+  let right = normalize(cross(vec3f(0.0, 1.0, 0.0), toMoon) + vec3f(1e-4, 0.0, 0.0));
+  let up = cross(toMoon, right);
+  let offset = dir - toMoon * cosine;
+  let local = vec2f(dot(offset, right), dot(offset, up)) / max(radius, 1e-4);
+  let r2 = dot(local, local);
+  if (r2 < 1.0) {
+    // Point on the sphere facing us, and the sun in the moon's sky.
+    let normal = vec3f(local, sqrt(1.0 - r2));
+    let sunAngle = (phase - 0.5) * TAU;
+    let sun = vec3f(sin(sunAngle), 0.0, cos(sunAngle));
+    let lit = max(dot(normal, sun), 0.0);
+    // Limb darkening, and a soft edge one pixel or so wide at any size.
+    let limb = 0.65 + 0.35 * normal.z;
+    let edge = smoothstep(1.0, 0.92, r2);
+    // The dark side is faintly earthlit, never black against the halo.
+    color += MOON_TINT * light * (lit * 4.0 + 0.06) * limb * edge;
+  }
+  return color;
 }
 
 /// The break's light scattered by the haze around it: the lit smoke and damp

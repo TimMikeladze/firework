@@ -38,7 +38,7 @@ describe("parseShell", () => {
       name: "x".repeat(500),
       launch: { height: 1e9, tilt: -1e9, flash: 5 },
       physics: { gravity: -100, turbulence: Number.NaN },
-      look: { exposure: 0, bloom: 99, waves: 4 },
+      look: { exposure: 0, bloom: 99, waves: 4, chop: -1, moonAngle: 720 },
       layers: [{ count: 1e9, life: -3, size: 0, drag: "nope", pattern: "wat" }],
     });
 
@@ -52,6 +52,8 @@ describe("parseShell", () => {
     expect(parsed.look.exposure).toBeGreaterThanOrEqual(0.2);
     expect(parsed.look.bloom).toBe(2);
     expect(parsed.look.waves).toBe(1);
+    expect(parsed.look.chop).toBe(0);
+    expect(parsed.look.moonAngle).toBe(180);
     expect(parsed.layers[0].count).toBeLessThanOrEqual(20000);
     expect(parsed.layers[0].life).toBeGreaterThanOrEqual(0.15);
     // An unknown pattern falls back rather than reaching the GPU as `undefined`.
@@ -66,6 +68,30 @@ describe("parseShell", () => {
     });
     expect(parsed.look.waves).toBe(defaultShell().look.waves);
     expect(parsed.look.reflection).toBe(0.6);
+  });
+
+  test("a shell saved before the moon and the chop still loads", () => {
+    // Same story for the later fields: an old save gets the default moon and
+    // sea confusion rather than a moonless, glassy, or NaN-driven sky.
+    const parsed = parseShell({
+      look: { bloom: 1, exposure: 1, reflection: 0.6, waves: 0.4, haze: 0.4 },
+    });
+    const base = defaultShell().look;
+    expect(parsed.look.chop).toBe(base.chop);
+    expect(parsed.look.moon).toBe(base.moon);
+    expect(parsed.look.moonSize).toBe(base.moonSize);
+    expect(parsed.look.moonHeight).toBe(base.moonHeight);
+    expect(parsed.look.moonAngle).toBe(base.moonAngle);
+    expect(parsed.look.moonPhase).toBe(base.moonPhase);
+  });
+
+  test("defaultShell merges a partial look over the defaults", () => {
+    // Presets and the random generator hand over only the look fields they
+    // care about; the rest have to come from the defaults, not go missing.
+    const shell = defaultShell({ look: { waves: 0.9 } });
+    expect(shell.look.waves).toBe(0.9);
+    expect(shell.look.moon).toBe(defaultShell().look.moon);
+    expect(shell.look.chop).toBe(defaultShell().look.chop);
   });
 
   test("keeps at most four layers", () => {

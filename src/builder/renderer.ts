@@ -40,6 +40,7 @@ import {
   type BurstLayer,
   COLOR_MODE_IDS,
   hexToLinear,
+  type LookSpec,
   PATTERN_FLASH,
   PATTERN_IDS,
   PATTERN_TRAIL,
@@ -102,6 +103,29 @@ function packWaterLights(lights: readonly WaterLight[]) {
 /** Angular size of one pixel for a vertical field of view over `height` px. */
 function pixelAngleFor(height: number): number {
   return (2 * Math.tan((FOV * Math.PI) / 360)) / Math.max(1, height);
+}
+
+/**
+ * The moon's share of the sky uniform, from the look settings. Height maps
+ * to an elevation between just clear of the horizon and high overhead; the
+ * bearing is a compass angle with 0 straight ahead of the default camera,
+ * which looks down -Z. Size runs from the real half-degree disc to a
+ * cinematic four degrees.
+ */
+function moonUniform(look: LookSpec) {
+  const elevation = ((4 + 66 * look.moonHeight) * Math.PI) / 180;
+  const bearing = (look.moonAngle * Math.PI) / 180;
+  const flat = Math.cos(elevation);
+  return {
+    moonRadius: ((0.26 + 1.74 * look.moonSize) * Math.PI) / 180,
+    moonPhase: look.moonPhase,
+    moonDir: [
+      Math.sin(bearing) * flat,
+      Math.sin(elevation),
+      -Math.cos(bearing) * flat,
+    ] as [number, number, number],
+    moon: look.moon,
+  };
 }
 
 function sizeOf(size: readonly [number, number]): [number, number] {
@@ -325,9 +349,8 @@ async function bootFireworks(
         glowColor: [1, 0.7, 0.45],
         waterY: WATER_Y,
         pixelAngle: pixelAngleFor(view.size[1]),
-        pad0: 0,
-        pad1: 0,
-        pad2: 0,
+        chop: options.spec.look.chop,
+        ...moonUniform(options.spec.look),
         ...packWaterLights([]),
       },
       mirror,
@@ -916,9 +939,8 @@ async function bootFireworks(
         glowColor: glowTint,
         waterY: WATER_Y,
         pixelAngle: pixelAngleFor(scene.size[1]),
-        pad0: 0,
-        pad1: 0,
-        pad2: 0,
+        chop: spec.look.chop,
+        ...moonUniform(spec.look),
         ...packWaterLights(waterLights),
       },
     });

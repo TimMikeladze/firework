@@ -765,12 +765,68 @@ export default function FireworksBuilder() {
           onChange={(waves) => patch({ look: { ...spec.look, waves } })}
         />
         <Slider
+          label="Chop"
+          value={spec.look.chop}
+          min={0}
+          max={1}
+          step={0.01}
+          onChange={(chop) => patch({ look: { ...spec.look, chop } })}
+        />
+        <Slider
           label="Haze"
           value={spec.look.haze}
           min={0}
           max={1}
           step={0.01}
           onChange={(haze) => patch({ look: { ...spec.look, haze } })}
+        />
+      </Section>
+
+      <div className="bg-seam h-px" />
+
+      <Section title="Moon">
+        <Slider
+          label="Moonlight"
+          value={spec.look.moon}
+          min={0}
+          max={1}
+          step={0.01}
+          onChange={(moon) => patch({ look: { ...spec.look, moon } })}
+        />
+        <Slider
+          label="Size"
+          value={spec.look.moonSize}
+          min={0}
+          max={1}
+          step={0.01}
+          onChange={(moonSize) => patch({ look: { ...spec.look, moonSize } })}
+        />
+        <Slider
+          label="Height"
+          value={spec.look.moonHeight}
+          min={0}
+          max={1}
+          step={0.01}
+          onChange={(moonHeight) =>
+            patch({ look: { ...spec.look, moonHeight } })
+          }
+        />
+        <Slider
+          label="Bearing"
+          value={spec.look.moonAngle}
+          min={-180}
+          max={180}
+          step={1}
+          unit="°"
+          onChange={(moonAngle) => patch({ look: { ...spec.look, moonAngle } })}
+        />
+        <Slider
+          label="Phase"
+          value={spec.look.moonPhase}
+          min={0}
+          max={1}
+          step={0.01}
+          onChange={(moonPhase) => patch({ look: { ...spec.look, moonPhase } })}
         />
       </Section>
 

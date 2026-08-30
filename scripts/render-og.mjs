@@ -302,9 +302,12 @@ const skyUniform = {
   glowColor: [1, 0.6, 0.34],
   waterY: WATER_Y,
   pixelAngle,
-  pad0: 0,
-  pad1: 0,
-  pad2: 0,
+  chop: 0.3,
+  // No moon on the card: the wordmark sits in that part of the sky.
+  moonRadius: (0.9 * Math.PI) / 180,
+  moonPhase: 0.72,
+  moonDir: [-0.53, 0.53, -0.66],
+  moon: 0,
   ...packWaterLights(0),
 };
 const sky = effect(gpu, skySrc, {

@@ -91,7 +91,8 @@ also the save format. It has four parts:
   time, colours, and its own drag/gravity/twinkle/crackle/tail. A layer's `delay` and
   `startRadius` are what make pistils, secondary breaks, and crossette splits.
 - **Night air** — gravity, air drag, wind, turbulence. Shared by every layer.
-- **Camera and sound** — bloom, exposure, the water mirror, the sea state, haze, and the
+- **Camera, moon, and sound** — bloom, exposure, the water mirror, the sea state and
+  chop, haze, the moon (brightness, size, height, bearing, phase), and the
   synthesized report and crackle.
 
 ## How it runs
@@ -122,7 +123,10 @@ somewhere and kinematics for a dozen objects is free. Everything else is GPU-sid
    turns the smooth lobe into the individual sparkles a sea throws, and a GGX specular
    from each of the last four breaks as point lights, which is what lays the long
    shimmering path across the water. The breaks also light the haze around them, and
-   that halo reflects too.
+   that halo reflects too. A moon — brightness, size, height, bearing, and phase all
+   settable — is shaded as the sphere it is, hangs in the haze with its own halo, and
+   lays a silver path of its own; the **Chop** setting turns a steady swell into a
+   confused one, with steeper, sharper, more scattered short waves and snaking crests.
 5. **Draw** — the same stars again, this time above the water, additively into the HDR
    target.
 6. **Composite** — bright pass, separable blur, then a hue-preserving tonemap

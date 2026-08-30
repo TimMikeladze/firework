@@ -146,10 +146,26 @@ export interface LookSpec {
   exposure: number;
   /** 0..1 — how much the water mirrors the show. 0 disables the mirror pass. */
   reflection: number;
-  /** 0..1 — sea state. 0 is a still pond, 1 is a choppy swell. */
+  /** 0..1 — sea state. 0 is a still pond, 1 is a heavy swell. */
   waves: number;
+  /**
+   * 0..1 — how confused the sea is on top of that swell: steeper, sharper,
+   * more scattered short waves with bent crests. 0 is a steady breeze, 1 a
+   * squall.
+   */
+  chop: number;
   /** 0..1 — haze/smoke sitting over the water. */
   haze: number;
+  /** 0..1 — brightness of the moon. 0 leaves it out of the sky. */
+  moon: number;
+  /** 0..1 — apparent size of the moon, from the real half degree to a cinematic four. */
+  moonSize: number;
+  /** 0..1 — elevation of the moon above the horizon. */
+  moonHeight: number;
+  /** Degrees, -180..180 — compass bearing of the moon; 0 is straight ahead of the default camera. */
+  moonAngle: number;
+  /** 0..1 — lunar phase. 0.5 is full, 0 and 1 are new. */
+  moonPhase: number;
 }
 
 export interface AudioSpec {
@@ -206,7 +222,13 @@ export function defaultLayer(overrides: Partial<BurstLayer> = {}): BurstLayer {
   };
 }
 
-export function defaultShell(overrides: Partial<ShellSpec> = {}): ShellSpec {
+/** `defaultShell` overrides. `look` merges field by field, the rest replace. */
+export type ShellOverrides = Omit<Partial<ShellSpec>, "look"> & {
+  look?: Partial<LookSpec>;
+};
+
+export function defaultShell(overrides: ShellOverrides = {}): ShellSpec {
+  const { look, ...rest } = overrides;
   return {
     id: makeId("shell"),
     name: "Untitled shell",
@@ -220,9 +242,22 @@ export function defaultShell(overrides: Partial<ShellSpec> = {}): ShellSpec {
     },
     layers: [defaultLayer()],
     physics: { gravity: 9.4, drag: 0.35, wind: 0.6, turbulence: 0.35 },
-    look: { bloom: 1, exposure: 1, reflection: 0.55, waves: 0.45, haze: 0.4 },
+    look: {
+      bloom: 1,
+      exposure: 1,
+      reflection: 0.55,
+      waves: 0.45,
+      chop: 0.35,
+      haze: 0.4,
+      moon: 0.5,
+      moonSize: 0.35,
+      moonHeight: 0.45,
+      moonAngle: -48,
+      moonPhase: 0.72,
+      ...look,
+    },
     audio: { enabled: true, boom: 0.7, crackle: 0.5 },
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -336,7 +371,13 @@ export function parseShell(input: unknown): ShellSpec {
       exposure: clampNumber(look.exposure, 0.2, 2.5, base.look.exposure),
       reflection: clampNumber(look.reflection, 0, 1, base.look.reflection),
       waves: clampNumber(look.waves, 0, 1, base.look.waves),
+      chop: clampNumber(look.chop, 0, 1, base.look.chop),
       haze: clampNumber(look.haze, 0, 1, base.look.haze),
+      moon: clampNumber(look.moon, 0, 1, base.look.moon),
+      moonSize: clampNumber(look.moonSize, 0, 1, base.look.moonSize),
+      moonHeight: clampNumber(look.moonHeight, 0, 1, base.look.moonHeight),
+      moonAngle: clampNumber(look.moonAngle, -180, 180, base.look.moonAngle),
+      moonPhase: clampNumber(look.moonPhase, 0, 1, base.look.moonPhase),
     },
     audio: {
       enabled:

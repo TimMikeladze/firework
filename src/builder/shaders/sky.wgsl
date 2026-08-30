@@ -12,7 +12,7 @@
 
 import {
   HORIZON_FOG, fresnelWater, ggxD, ggxVisibility, oceanHeight, oceanNormal, oceanWave,
-  OCTAVES, breakHalo, seaAlpha, seaGlint, skyColor, skyGradient,
+  MOON_TINT, OCTAVES, breakHalo, moonLight, seaAlpha, seaGlint, skyColor, skyGradient,
 } from "./water.wgsl";
 
 /// Breaks the water lights from at once. A show has several shells burning at
@@ -41,9 +41,17 @@ struct SkyParams {
   waterY: f32,
   /// Angular size of one pixel, radians. Sets the footprint on the water.
   pixelAngle: f32,
-  pad0: f32,
-  pad1: f32,
-  pad2: f32,
+  /// 0..1 — how confused the sea is: steeper, sharper, more scattered short
+  /// waves on the same swell.
+  chop: f32,
+  /// Angular radius of the moon's disc, radians.
+  moonRadius: f32,
+  /// 0..1 — lunar phase. 0.5 is full, either end is new.
+  moonPhase: f32,
+  /// Unit direction to the moon.
+  moonDir: vec3f,
+  /// Brightness of the moon; 0 leaves it out of the sky entirely.
+  moon: f32,
   /// Recent breaks as point lights: xyz is the break position, w its
   /// intensity. Zero intensity is an empty slot.
   lights: array<vec4f, 4>,
@@ -70,6 +78,15 @@ fn haloLight(dir: vec3f) -> vec3f {
     halo += sky.lightColors[i].rgb * breakHalo(dir, toLight, light.w, sky.haze);
   }
   return halo;
+}
+
+/// The whole sky along `dir`: gradient, stars, the moon, and the breaks' halos.
+fn skyAlong(dir: vec3f, starScale: f32) -> vec3f {
+  // A bright moon washes the faint stars out of the sky, the way it does.
+  let stars = starScale * (1.0 - 0.4 * clamp(sky.moon, 0.0, 1.0));
+  return skyColor(dir, sky.time, stars, sky.glow, sky.glowColor)
+    + moonLight(dir, sky.moonDir, sky.moonRadius, sky.moonPhase, sky.moon, sky.haze)
+    + haloLight(dir);
 }
 
 /// Screen coordinate of a world point, in the mirror target's top-origin UV.
@@ -103,7 +120,8 @@ fn reflectedUV(hit: vec3f, dir: vec3f, normal: vec3f, imageY: f32) -> vec2f {
 
 /// Colour of the sea where the view ray `dir` hits it.
 fn waterColor(dir: vec3f) -> vec3f {
-  let chop = 0.25 + sky.waves * 1.35;
+  let sea = 0.25 + sky.waves * 1.35;
+  let chop = clamp(sky.chop, 0.0, 1.0);
   let dropY = min(dir.y, -0.0008);
 
   // Distance to the plane. `dir` is unit, so it doubles as the travel length.
@@ -121,16 +139,16 @@ fn waterColor(dir: vec3f) -> vec3f {
   // what separates a sea from a plane with a normal map on it. Relaxed, since
   // a grazing ray can meet a wave more than once and a full step oscillates.
   for (var i = 0; i < 2; i = i + 1) {
-    let h = oceanHeight(hit.xz, sky.time, chop, footprint);
+    let h = oceanHeight(hit.xz, sky.time, sea, chop, footprint);
     let corrected = (sky.waterY + h - sky.eye.y) / dropY;
     dist = mix(dist, corrected, 0.7);
     hit = sky.eye + dir * dist;
     footprint = dist * sky.pixelAngle / max(0.012, -dir.y);
   }
 
-  let wave = oceanWave(hit.xz, sky.time, chop, footprint, OCTAVES);
+  let wave = oceanWave(hit.xz, sky.time, sea, chop, footprint, OCTAVES);
   let normal = oceanNormal(wave.slope);
-  let alpha = seaAlpha(wave.variance, chop);
+  let alpha = seaAlpha(wave.variance, sea, chop);
 
   // Fresnel against the facet, not the flat plane: crests tipped toward the
   // camera go dark while their backs mirror, and that difference is most of
@@ -145,7 +163,7 @@ fn waterColor(dir: vec3f) -> vec3f {
   let skyDir = normalize(vec3f(bounced.x, max(bounced.y, 0.003), bounced.z));
   // Stars only survive in a surface smooth enough to resolve a point source.
   let starScale = smoothstep(0.12, 0.02, alpha);
-  let mirrored = skyColor(skyDir, sky.time, starScale, sky.glow, sky.glowColor) + haloLight(skyDir);
+  let mirrored = skyAlong(skyDir, starScale);
 
   // Glints. The specular lobe is the *expected* reflection from the facets a
   // pixel covers; when the pixel holds only a handful, the number aligned at
@@ -236,6 +254,28 @@ fn waterColor(dir: vec3f) -> vec3f {
   // its keep in proportion to how many of those there are.
   specular *= 0.25 + 0.75 * smoothstep(0.03, 0.12, alpha);
 
+  // Moonlight: a directional light, so no falloff and no depth to project to.
+  // Its disc and halo are already in the mirrored sky; this is the long
+  // glitter path a moon lays across any sea that is not glass, and a little
+  // moonlight scattered back out of the water itself.
+  if (sky.moon > 0.0) {
+    let ndotl = dot(normal, sky.moonDir);
+    if (ndotl > 0.0) {
+      let halfway = normalize(sky.moonDir - dir);
+      let ndoth = max(dot(normal, halfway), 0.0);
+      let vdoth = max(dot(-dir, halfway), 0.0);
+      let d = ggxD(ndoth, alpha);
+      let vis = ggxVisibility(ndotl, max(ndotv, 1e-3), alpha);
+      let f = fresnelWater(vdoth);
+      // Softer sparkle than a break: the disc is an extended source, so more
+      // facets are lit at once and the path reads as silver, not glitter.
+      let moonPath = min(d * vis * f * ndotl * sky.moon * 0.11 * mix(1.0, twinkle, 0.6), 60.0)
+        * (0.25 + 0.75 * smoothstep(0.03, 0.12, alpha));
+      specular += MOON_TINT * moonPath;
+      body += MOON_TINT * vec3f(0.55, 0.85, 1.0) * sky.moon * ndotl * 0.004;
+    }
+  }
+
   var color = mix(body, mirrored, fresnel) + show * fresnel + specular;
 
   // Distance fog. The far water fades toward the sky immediately above the
@@ -256,7 +296,7 @@ fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
 
   var color: vec3f;
   if (dir.y >= 0.0 || sky.eye.y <= sky.waterY) {
-    color = skyColor(dir, sky.time, 1.0, sky.glow, sky.glowColor) + haloLight(dir);
+    color = skyAlong(dir, 1.0);
   } else {
     color = waterColor(dir);
   }

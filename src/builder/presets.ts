@@ -4,7 +4,12 @@
  * the renderer.
  */
 
-import { defaultLayer, defaultShell, type ShellSpec } from "./spec";
+import {
+  defaultLayer,
+  defaultShell,
+  type ShellOverrides,
+  type ShellSpec,
+} from "./spec";
 
 /**
  * Layer ids are derived from the preset id rather than generated, so the same
@@ -15,7 +20,7 @@ import { defaultLayer, defaultShell, type ShellSpec } from "./spec";
 function preset(
   id: string,
   name: string,
-  spec: Omit<Partial<ShellSpec>, "id" | "name">,
+  spec: Omit<ShellOverrides, "id" | "name">,
 ): ShellSpec {
   const shell = defaultShell({ ...spec, id, name });
   return {

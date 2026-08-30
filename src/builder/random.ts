@@ -171,6 +171,7 @@ export function randomShell(): ShellSpec {
       exposure: 1,
       reflection: range(0.4, 0.75),
       waves: range(0.2, 0.75),
+      chop: range(0.1, 0.7),
       haze: range(0.25, 0.6),
     },
     audio: { enabled: true, boom: range(0.5, 0.85), crackle: range(0.3, 0.7) },

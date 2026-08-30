@@ -53,6 +53,9 @@ const WAVES = Number(flag("waves", 0.45));
 const REFLECTION = Number(flag("reflection", 0.6));
 /** Intensity of the break as a point light on the water; 0 isolates the mirror. */
 const LIGHT = Number(flag("light", 1.2));
+/** Sea confusion and moon brightness, for eyeballing those on their own. */
+const CHOP = Number(flag("chop", 0.35));
+const MOON = Number(flag("moon", 0.5));
 
 function fail(message) {
   console.error(`FAIL  ${message}`);
@@ -133,9 +136,12 @@ const sky = effect(gpu, skySrc, {
       glowColor: [1, 0.7, 0.45],
       waterY: 0,
       pixelAngle,
-      pad0: 0,
-      pad1: 0,
-      pad2: 0,
+      chop: CHOP,
+      // A gibbous moon up and to the left of the burst, inside the frame.
+      moonRadius: (0.9 * Math.PI) / 180,
+      moonPhase: 0.72,
+      moonDir: [-0.3601, 0.2756, -0.8913],
+      moon: MOON,
       // The burst as a point light, plus three empty slots.
       lights: [
         [0, 34, 0, LIGHT],

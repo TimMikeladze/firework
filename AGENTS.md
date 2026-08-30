@@ -22,10 +22,17 @@ padding field, or the values land at the wrong offsets. `scripts/verify-pipeline
 `SkyParams` has to land in all four or the shader silently reads zero. `SkyParams` ends in
 two `array<vec4f, 4>` fields (`lights`, `lightColors`); the JS side hands them over as
 four-element arrays of four-element arrays, and `LIGHTS` in `sky.wgsl` must stay equal to
-`WATER_LIGHTS` in the renderer.
+`WATER_LIGHTS` in the renderer. The moon travels as `moonDir` (unit vector, built by
+`moonUniform()` in the renderer from the look's height and bearing), `moonRadius`
+(radians), `moonPhase`, and `moon` (brightness; 0 skips it entirely).
 
 `bun run verify -- --light 0` turns the point lights off, which isolates the mirror
-target's contribution to the water; `--waves` and `--reflection` cover the other knobs.
+target's contribution to the water; `--waves`, `--chop`, `--moon`, and `--reflection`
+cover the other knobs (`--moon 1 --light 0 --reflection 0` is the moon on its own).
+
+`LookSpec` fields are added in three places — the interface, `defaultShell`, and the
+clamp in `parseShell` — and `defaultShell` merges a *partial* `look` over the defaults,
+so presets and the random generator never need to list every field.
 
 # The water reflects a pass, not a trick
 
@@ -43,8 +50,11 @@ projected with `viewProj` — the same camera the mirror pass drew with. That is
 done again with the normal tilted by the roughness, so its size and direction on screen
 are the real ones rather than a constant.
 
-The wave maths lives in `water.wgsl`, a pure module with no bindings. Several things there
-are load-bearing and look like tuning: octaves finer than the pixel footprint are faded
+The wave maths lives in `water.wgsl`, a pure module with no bindings. `oceanWave` takes
+two sea controls: `sea` (from the `waves` look) scales the whole spectrum, `chop` steepens
+and sharpens the short octaves, widens their directional fan, deepens the wave groups, and
+bends the crests — every one of those terms is differentiated so the slope stays the true
+gradient of the height. Several things there are load-bearing and look like tuning: octaves finer than the pixel footprint are faded
 out and their slope energy handed back as `variance`, which `seaAlpha` turns into GGX
 roughness on top of a Cox–Munk floor (drop the fade and the horizon becomes a shimmering
 noise band; drop the floor and near water has no sparkle at all); every octave is cut into
