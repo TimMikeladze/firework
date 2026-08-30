@@ -57,6 +57,49 @@ const WATER_Y = 0;
 const WATER_LIGHTS = 4;
 /** Vertical field of view, degrees. */
 const FOV = 52;
+/**
+ * The opening view: a spectator on the shore rather than a camera in the
+ * middle of the show. The eye sits a few units above the water and aims a
+ * little above it, which drops the horizon below the middle of the frame and
+ * hands the larger share to the sky the shells break in — the water keeps
+ * enough of the bottom to carry the reflection.
+ */
+const EYE_HEIGHT = 4;
+const AIM_HEIGHT = 11;
+/**
+ * The box a show fills. Cues drift out to about forty units either side and
+ * break as high as fifty, and a fat layer throws sparks a good fifteen further
+ * in every direction, so the opening framing is built to hold all of it.
+ */
+const SHOW_HALF_WIDTH = 55;
+const SHOW_TOP = 68;
+/**
+ * Past this the shells are specks, so a very tall, narrow window gets a
+ * cropped show rather than a distant one.
+ */
+const MAX_FRAMING_DISTANCE = 175;
+
+/**
+ * How far out across the water to stand so the whole show is in frame. The
+ * vertical fit is what binds on a desk; a portrait phone is too narrow to hold
+ * the width of a show at any sane distance, so it backs off to the cap and
+ * crops the outermost cues instead.
+ */
+function openingGround(aspect: number): number {
+  const half = Math.tan((FOV * Math.PI) / 360);
+  const vertical = (SHOW_TOP - AIM_HEIGHT) / half;
+  const horizontal = SHOW_HALF_WIDTH / (half * Math.max(0.2, aspect));
+  return Math.min(Math.max(vertical, horizontal), MAX_FRAMING_DISTANCE);
+}
+
+/** The same framing as an orbit pose, for re-framing a camera already built. */
+function openingPose(aspect: number): { distance: number; pitch: number } {
+  // The orbit distance runs eye to target, not along the water, and the eye
+  // sits below the target — hence the negative pitch.
+  const rise = AIM_HEIGHT - EYE_HEIGHT;
+  const distance = Math.hypot(openingGround(aspect), rise);
+  return { distance, pitch: -Math.asin(rise / distance) };
+}
 
 /**
  * A recent break, lighting the water as a point source. Its intensity follows
@@ -301,22 +344,35 @@ async function bootFireworks(
     label: "mirror",
   });
 
+  const aspectOf = (size: readonly number[]) => size[0] / Math.max(1, size[1]);
+  const opening = openingGround(aspectOf(view.size));
+
   const camera = perspectiveCamera({
     fov: FOV,
-    aspect: view.size[0] / Math.max(1, view.size[1]),
+    aspect: aspectOf(view.size),
     near: 0.5,
     far: 900,
-    position: [0, 7, 88],
-    target: [0, 1, 0],
+    position: [0, EYE_HEIGHT, opening],
+    target: [0, AIM_HEIGHT, 0],
   });
   const controls = orbitControls(camera, {
     element: canvas,
-    // Aimed just under the horizon, so a break and its mirror both fit.
-    target: [0, 1, 0],
+    // Aimed just over the horizon, so a break and its mirror both fit.
+    target: [0, AIM_HEIGHT, 0],
     damping: 0.12,
-    distance: { min: 18, max: 260 },
+    distance: { min: 18, max: 300 },
     pitch: { min: -0.22, max: 1.2 },
   });
+  /**
+   * Whether the viewer has taken the camera — by dragging it round or zooming
+   * it. Until they do, a resize re-frames the show: a phone turned on its side
+   * is a new window onto the same show, not a request to lose half of it.
+   */
+  let cameraTaken = false;
+  const takeCamera = () => {
+    cameraTaken = true;
+  };
+  canvas.addEventListener("wheel", takeCamera, { passive: true });
 
   const invViewProj: Mat4 = new Float32Array(16);
   const cameraUniform = {
@@ -325,7 +381,7 @@ async function bootFireworks(
     pad0: 0,
     up: [0, 1, 0] as [number, number, number],
     pad1: 0,
-    eye: [0, 9, 78] as [number, number, number],
+    eye: [0, EYE_HEIGHT, opening] as [number, number, number],
     pad2: 0,
   };
 
@@ -453,7 +509,8 @@ async function bootFireworks(
     bloomA.resize(half);
     bloomB.resize(half);
     mirror.resize(half);
-    camera.set({ aspect: size[0] / Math.max(1, size[1]) });
+    camera.set({ aspect: aspectOf(size) });
+    if (!cameraTaken) controls.set(openingPose(aspectOf(size)));
     bright.set({
       bright: { texel: scene.texelSize, threshold: 0.32, knee: 0.5 },
     });
@@ -1103,8 +1160,11 @@ async function bootFireworks(
     const start = pointerDownAt;
     pointerDownAt = null;
     if (!start) return;
-    if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5)
+    if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5) {
+      // The drag went to the orbit control, so the framing is the viewer's now.
+      takeCamera();
       return;
+    }
     const rect = canvas.getBoundingClientRect();
     const ndcX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     const ndcY = 1 - ((event.clientY - rect.top) / rect.height) * 2;
@@ -1126,6 +1186,7 @@ async function bootFireworks(
   handle.dispose = () => {
     canvas.removeEventListener("pointerdown", onPointerDown);
     canvas.removeEventListener("pointerup", onPointerUp);
+    canvas.removeEventListener("wheel", takeCamera);
     baseDispose();
   };
 

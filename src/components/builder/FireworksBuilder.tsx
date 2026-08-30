@@ -1004,6 +1004,21 @@ export default function FireworksBuilder() {
     </span>
   );
 
+  /*
+   * Credits, in the fine print. One line, small enough to stay out of the
+   * sky's way: down under the rack on a desk, along the foot of the dock on a
+   * phone, where the bottom of the screen is already spoken for.
+   */
+  const credits = (
+    <nav className="text-ash/70 pointer-events-auto flex items-center gap-1.5 text-[10px] tracking-wide">
+      <Credit href="https://github.com/TimMikeladze">GitHub</Credit>
+      <span className="text-ash/35">·</span>
+      <Credit href="https://linesofcode.dev">linesofcode.dev</Credit>
+      <span className="text-ash/35">·</span>
+      <Credit href="https://x.com/linesofcode">@linesofcode</Credit>
+    </nav>
+  );
+
   return (
     <main className="bg-void relative h-dvh w-full overflow-hidden">
       <canvas
@@ -1046,14 +1061,6 @@ export default function FireworksBuilder() {
               Tap the water to fire · Drag to look around
             </span>
           </p>
-          {/* Credits. The header ignores pointer events, so the links opt back in. */}
-          <nav className="text-ash pointer-events-auto mt-1.5 flex items-center gap-2 text-[11px] tracking-wide">
-            <Credit href="https://github.com/TimMikeladze">GitHub</Credit>
-            <span className="text-ash/45">·</span>
-            <Credit href="https://linesofcode.dev">linesofcode.dev</Credit>
-            <span className="text-ash/45">·</span>
-            <Credit href="https://x.com/linesofcode">@linesofcode</Credit>
-          </nav>
         </div>
         {/* The frame counter lives in the firing bar on a desk; up here on a phone. */}
         <div className="shrink-0 pt-1 lg:hidden">{statsReadout}</div>
@@ -1142,8 +1149,24 @@ export default function FireworksBuilder() {
           <div className="bg-seam hidden h-6 w-px lg:block" />
 
           <span className="hidden lg:inline">{statsReadout}</span>
+
+          {/* A short window has no room to spare under the thumb row. */}
+          <div className="flex justify-center pb-0.5 lg:hidden [@media(max-height:520px)]:hidden">
+            {credits}
+          </div>
         </div>
       </div>
+
+      {/*
+       * The fine print on a desk. It sits in the strip under the rack, lined
+       * up with the music deck: the corner below belongs to the firing bar,
+       * which grows toward it as the window narrows.
+       */}
+      <footer
+        className={`pointer-events-none absolute bottom-[76px] left-7 z-30 hidden transition-opacity duration-300 lg:block ${chromeClass}`}
+      >
+        {credits}
+      </footer>
 
       {/*
        * The way back once the desk is hidden. Keyboards have H; thumbs get a
