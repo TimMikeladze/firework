@@ -29,6 +29,23 @@ export interface UmamiConfig {
   domains?: string;
 }
 
+/**
+ * Pairs every hostname with its `www.` counterpart, because the tracker's
+ * domain check is an exact `location.hostname` match and drops anything else
+ * in silence. `firework.sh` and `www.firework.sh` are both live aliases of this
+ * project, so a list naming only one of them loses half the page views with no
+ * error anywhere — the list exists to exclude preview deployments, not to pick
+ * between two spellings of the same site.
+ */
+function expandHostAliases(hosts: string[]): string[] {
+  const seen = new Set<string>();
+  for (const host of hosts) {
+    seen.add(host);
+    seen.add(host.startsWith("www.") ? host.slice(4) : `www.${host}`);
+  }
+  return [...seen];
+}
+
 export interface UmamiEnv {
   websiteId?: string;
   scriptUrl?: string;
@@ -50,12 +67,17 @@ export function resolveUmamiConfig(env: UmamiEnv): UmamiConfig | null {
   if (!websiteId) return null;
 
   const scriptUrl = env.scriptUrl?.trim();
-  const domains = env.domains?.trim();
+  const hosts = expandHostAliases(
+    (env.domains ?? "")
+      .split(",")
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean),
+  );
 
   return {
     websiteId,
     scriptUrl: scriptUrl ? normalizeScriptUrl(scriptUrl) : DEFAULT_SCRIPT_URL,
-    ...(domains ? { domains } : {}),
+    ...(hosts.length ? { domains: hosts.join(",") } : {}),
   };
 }
 

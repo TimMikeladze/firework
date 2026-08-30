@@ -42,13 +42,32 @@ describe("resolveUmamiConfig", () => {
     ).toBe("https://umami.example.com/custom.js");
   });
 
-  test("passes domains through, and omits them when blank", () => {
-    expect(
-      resolveUmamiConfig({ websiteId: "abc", domains: " firework.sh " })
-        ?.domains,
-    ).toBe("firework.sh");
+  test("omits domains when blank", () => {
     expect(
       resolveUmamiConfig({ websiteId: "abc", domains: "  " }),
     ).not.toHaveProperty("domains");
+    expect(
+      resolveUmamiConfig({ websiteId: "abc", domains: " , ," }),
+    ).not.toHaveProperty("domains");
+  });
+
+  test("pairs every domain with its www counterpart", () => {
+    expect(
+      resolveUmamiConfig({ websiteId: "abc", domains: " Firework.sh " })
+        ?.domains,
+    ).toBe("firework.sh,www.firework.sh");
+    expect(
+      resolveUmamiConfig({ websiteId: "abc", domains: "www.firework.sh" })
+        ?.domains,
+    ).toBe("www.firework.sh,firework.sh");
+  });
+
+  test("keeps a hand-written pair as one entry each", () => {
+    expect(
+      resolveUmamiConfig({
+        websiteId: "abc",
+        domains: "firework.sh, www.firework.sh, demo.firework.sh",
+      })?.domains,
+    ).toBe("firework.sh,www.firework.sh,demo.firework.sh,www.demo.firework.sh");
   });
 });

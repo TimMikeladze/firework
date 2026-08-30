@@ -207,7 +207,10 @@ NEXT_PUBLIC_UMAMI_DOMAINS=      # hostnames allowed to report, e.g. firework.sh
 
 `NEXT_PUBLIC_*` values are inlined at build time, so changing one on Vercel needs a
 redeploy rather than a restart. `NEXT_PUBLIC_UMAMI_DOMAINS` is what keeps preview
-deployments out of the numbers for the domain people actually visit. See
+deployments out of the numbers for the domain people actually visit; the tracker matches
+it against `location.hostname` exactly and drops anything else without a word, so every
+entry is paired with its `www.` counterpart before it is handed over — naming one
+spelling of a site that answers on both would otherwise lose half the page views. See
 [`.env.example`](.env.example), and [`src/analytics/umami.ts`](src/analytics/umami.ts) for
 `trackEvent()` if a custom event is ever worth recording.
 
