@@ -22,9 +22,28 @@ const dmMono = DM_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Fireworks Builder",
+  metadataBase: new URL("https://firework.sh"),
+  title: "firework.sh",
   description:
-    "Design a firework shell — pattern, colours, physics, timing — and fire it over the water.",
+    "Design a firework shell — pattern, colours, physics, timing — and fire it over the water, choreographed to your music.",
+  authors: [{ name: "Tim Mikeladze", url: "https://linesofcode.dev" }],
+  creator: "Tim Mikeladze",
+  openGraph: {
+    type: "website",
+    url: "https://firework.sh",
+    siteName: "firework.sh",
+    title: "firework.sh",
+    description:
+      "Design a firework shell — pattern, colours, physics, timing — and fire it over the water, choreographed to your music.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    site: "@linesofcode",
+    creator: "@linesofcode",
+    title: "firework.sh",
+    description:
+      "Design a firework shell — pattern, colours, physics, timing — and fire it over the water, choreographed to your music.",
+  },
 };
 
 export const viewport: Viewport = {

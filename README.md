@@ -1,8 +1,9 @@
-# Fireworks Builder
+# firework.sh
 
-Design a firework shell — pattern, colours, physics, fuse timing — and fire it over the
-water. The whole show is simulated and drawn on the GPU with WebGPU, so a break can carry
-tens of thousands of stars and still hold 60 fps while you drag a slider.
+Design a firework shell at **[firework.sh](https://firework.sh)** — pattern, colours,
+physics, fuse timing — and fire it over the water. The whole show is simulated and drawn
+on the GPU with WebGPU, so a break can carry tens of thousands of stars and still hold
+60 fps while you drag a slider.
 
 Then hand it a track and the desk stops firing at random: it choreographs the whole song
 and breaks every shell on the beat, whether the music is a file you dropped, a tab you are
@@ -156,3 +157,8 @@ Next.js 16, React 19, Tailwind 4, and [vgpu](https://www.npmjs.com/package/vgpu)
 WebGPU. Shaders live in `.wgsl` files and are resolved by vgpu's loader, registered for
 both Turbopack and webpack in [`next.config.ts`](next.config.ts). Everything runs
 client-side; the server only ships the shell.
+
+## Credits
+
+Built by [Tim Mikeladze](https://linesofcode.dev) —
+[GitHub](https://github.com/TimMikeladze) · [@linesofcode](https://x.com/linesofcode).

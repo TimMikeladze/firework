@@ -215,3 +215,23 @@ export function DeskButton({
     </button>
   );
 }
+
+/** A masthead credit link. Underlined on hover so it reads as a link, not a label. */
+export function Credit({
+  href,
+  children,
+}: {
+  href: string;
+  children: ReactNode;
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="hover:text-gold underline decoration-transparent underline-offset-2 transition-colors hover:decoration-current"
+    >
+      {children}
+    </a>
+  );
+}

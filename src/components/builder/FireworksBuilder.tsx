@@ -44,6 +44,7 @@ import {
 import { BreakChart } from "./BreakChart";
 import {
   ColorField,
+  Credit,
   DeskButton,
   Eyebrow,
   Lamp,
@@ -867,12 +868,20 @@ export default function FireworksBuilder() {
         }`}
       >
         <h1 className="font-display text-paper text-[26px] leading-none font-extrabold tracking-[0.02em] uppercase md:text-[30px]">
-          Fireworks<span className="text-ember">.</span>Builder
+          Firework<span className="text-ember">.</span>sh
         </h1>
         <p className="text-ash mt-1 text-[11px] tracking-wide">
           Click the water to fire there · Drag to look around · Space fires · H
           hides the desk
         </p>
+        {/* Credits. The header ignores pointer events, so the links opt back in. */}
+        <nav className="text-ash pointer-events-auto mt-1.5 flex items-center gap-2 text-[11px] tracking-wide">
+          <Credit href="https://github.com/TimMikeladze">GitHub</Credit>
+          <span className="text-ash/45">·</span>
+          <Credit href="https://linesofcode.dev">linesofcode.dev</Credit>
+          <span className="text-ash/45">·</span>
+          <Credit href="https://x.com/linesofcode">@linesofcode</Credit>
+        </nav>
       </header>
 
       {/* Desk panels. Hidden entirely on hand-held widths, where the sheet wins. */}
