@@ -1,36 +1,279 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# firework.sh
 
-## Getting Started
+A fireworks studio at **[firework.sh](https://firework.sh)** — design the burst, the
+colours, the physics, the fuse timing — and fire it over the water. The whole show is
+simulated and drawn on the GPU with WebGPU, so a break can carry tens of thousands of
+stars and still hold 60 fps while you drag a slider.
 
-First, run the development server:
+Then hand it a track and the desk stops firing at random: it choreographs the whole song
+and breaks every firework on the beat, whether the music is a file you dropped, a tab you
+are sharing, or whatever the microphone can hear.
+
+The rhythm game this repo started as still lives at [`/show`](#pulse-show).
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+bun install
+bun run dev       # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Needs a WebGPU browser: current Chrome or Edge, or Safari 26.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Using the desk
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Fire** (or `Space`) launches the firework you are editing. Clicking the water launches
+  it at that spot; dragging orbits the camera.
+- **Auto** fires on a timer, in fireworks per minute. `A` toggles it.
+- **Roll** (`R`) generates a plausible random design and fires it.
+- **H** hides the desk, `M` mutes, **Freeze** pauses the simulation without clearing it.
+- **Save** puts the current design in your rack (localStorage). **Copy JSON** / **Paste
+  JSON** move a design between machines.
+- **P** plays or pauses a loaded track. Auto-fire stands down while a show is running.
 
-## Learn More
+On a phone or tablet the same desk folds into one sheet above the firing dock: **Design**,
+**Rack**, and **Music** are tabs, the grip drags the sheet between a peek, half, and full
+height (a tap steps through them, and tapping the open tab again puts it away), and the
+struck-through eye in the tab strip hides everything but the sky — **Show desk** brings
+it back. Nothing is left out: every slider, the break chart, the rack, and the music deck
+are all there, just sized for a thumb. Tap the water to fire, drag to look around.
 
-To learn more about Next.js, take a look at the following resources:
+The break chart at the top of the design card is a live schematic: the altitude column on
+the left is where the firework breaks, the scatter in the middle is the break at its true
+relative size, and the strip underneath is the fuse chain. It reads the same numbers the
+GPU does, so it updates as you drag.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Firing to music
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The deck along the bottom takes four sources:
 
-## Deploy on Vercel
+- **Demo track** — a 62-second track synthesized in the browser. No files, no network.
+- **Load file** (or drop an mp3/wav/ogg/m4a anywhere on the page) — decoded and analysed
+  in the tab; nothing is uploaded.
+- **Listen to a tab** — share a tab with "Also share tab audio" ticked and the show fires
+  to whatever it plays. Spotify in another tab, a YouTube set, a video call.
+- **Microphone** — fires to the room. Reports are muted automatically, or the desk would
+  hear its own booms as beats.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+A cue is a *break* time, not a launch time. Every firework leaves the mortar
+`shellRiseTime()` seconds early — the lift is solved back from the authored apex height —
+so the flower opens on the beat instead of the mortar firing on it. Timing reads
+`AudioContext`'s clock, corrected for the device's output latency; `requestAnimationFrame`
+only decides when that clock is sampled.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**A loaded track is choreographed up front.** The analysis ([`src/audio/analysis.ts`](src/audio/analysis.ts))
+gives onsets, their strength, a spectral tilt, a tempo, and an energy segmentation;
+[`src/builder/choreography.ts`](src/builder/choreography.ts) cuts that into a script:
+
+- Bass hits break low and wide, cymbals break high and tight, and the loudest onsets get a
+  pistil and — in a chorus or a drop — a delayed crossette crown.
+- Sections set the spacing and the palette: a verse gets a break every couple of beats, a
+  drop gets one on nearly every onset. Section climbs get a sweep across the water, and
+  the last bars get a finale.
+- A live star budget scales breaks down rather than letting a dense passage outrun the
+  particle pool.
+
+The strip under the transport draws that script — the track's envelope, the sections, and
+a tick for every scheduled break — so the whole show is readable before it plays, and
+clicking it seeks.
+
+**A live source cannot be choreographed**, because a firework needs a couple of seconds in
+the air and live audio has no future to read. [`src/builder/live.ts`](src/builder/live.ts)
+tracks the beat instead: spectral flux onsets feed a least-squares fit over recent
+grid-consistent hits, which predicts beats three seconds out to well inside 30 ms. Each
+beat is decided at the moment it has to launch, so the design still reads the music as it
+sounds now.
+
+Three controls apply to both: **Show density** (how much of the track gets a break),
+**Follow my colours** (use the edited palette instead of the section palettes),
+and **Sync offset** (±250 ms of audio/visual calibration).
+
+## Sound
+
+Nothing is sampled. Every report is synthesized on the fly in
+[`src/builder/sfx.ts`](src/builder/sfx.ts), in the order the ear actually gets it: a
+**crack** — milliseconds of broadband transient — then the **body**, a saturated shove of
+air, a short **sub** under that which is felt rather than heard, and a long uneven **roll**
+as the report comes back off everything around the listener. Nothing in there is a tuned
+oscillator except that sub, and the sub falls too fast to land on a note: a sine swept
+down through the floor is a kick drum, and a kick drum is the one thing a firework does
+not sound like. `size` picks the character as well as the tuning — a small break is a
+salute, a big one is all air and tail — unless the shell names one itself: the desk's
+**Voice** control overrides that pick, and **Bomb** trades the whipcrack for a
+hard-driven body, a sub an octave down, and a roll that outlasts the shape.
+
+Distance is what mixes those, and it is a real model rather than a volume knob. Sound
+arrives `distance / 343` seconds late, air takes the top off (a few dB per hundred metres,
+which is what it actually costs — enough to hear across a show, nowhere near enough to
+muffle it), the roll grows as more of what arrives has bounced off something, and the send
+into the shared tail rises with it.
+Where a break sits across the stereo field comes from the camera's own right vector, so
+it pans the way the eye sees it, even mid-orbit. A finale pulls every voice back
+sub-linearly as the count climbs and a limiter with a soft knee catches what is left —
+which is why a barrage sounds like twenty fireworks rather than like one clipped one.
+
+The lift is the mortar's thump and a warbling whistle that dies before the break lands.
+The tail is a field of individually filtered, individually panned pops, not a band of
+hiss with holes cut in it.
+
+The bundled demo track ([`src/audio/demo-song.ts`](src/audio/demo-song.ts)) is
+synthesized the same way — filtered two-oscillator voices through a dotted-eighth delay,
+onto the same kind of glue.
+
+```bash
+bun run sfx                        # render every voice to sfx.wav and print the levels
+bun run sfx -- --scene characters  # one scene: burst, characters, lift, crackle, barrage, song, show
+bun run sfx -- --out /tmp/try.wav --seed 7
+```
+
+`bun run sfx` builds the same bus the browser builds and schedules the same voices onto
+it through an `OfflineAudioContext`, so the WAV is the mix that plays — the fastest way
+to hear a change without a browser, and the numbers it prints (peak, RMS, brightness)
+catch a change that clips or goes dull. `bun test` asserts on those same renders.
+
+## Anatomy of a firework
+
+A `ShellSpec` ([`src/builder/spec.ts`](src/builder/spec.ts)) is the whole design, and it is
+also the save format. It has four parts:
+
+- **Lift** — break height, tilt, fuse, the rising trail, and the break flash. Height is
+  solved back into a lift impulse, so a 40 m break really does top out at 40 m.
+- **Layers** — up to four breaks, each with a pattern (peony, ring, palm, willow,
+  crossette, star, heart, spiral, strobe, comet, double ring, triangle), a star count,
+  speed, burn time, colours, and its own drag/gravity/twinkle/crackle/tail. A layer's
+  `delay` and `startRadius` are what make pistils, secondary breaks, and crossette splits.
+- **Night air** — gravity, air drag, wind, turbulence. Shared by every layer.
+- **Camera, moon, and sound** — bloom, exposure, the water mirror, the sea state and
+  chop, haze, the moon (brightness, size, height, bearing, phase), and the
+  synthesized report and crackle, and the voice the break fires with.
+
+## How it runs
+
+The CPU owns the handful of rising rockets, because the break has to be scheduled
+somewhere and kinematics for a dozen objects is free. Everything else is GPU-side:
+
+1. **Emit** ([`emit.wgsl`](src/builder/shaders/emit.wgsl)) — one dispatch per layer writes
+   its stars straight into the particle buffer. A 10,000-star break costs one uniform
+   write and one dispatch; no particle data ever crosses the bus.
+2. **Simulate** ([`sim.wgsl`](src/builder/shaders/sim.wgsl)) — gravity, wind, exponential
+   drag, and a turbulence field, over the live window only.
+3. **Reflect** ([`sparks.wgsl`](src/builder/shaders/sparks.wgsl)) — the same instanced
+   draw, with every star flipped through the water plane and rendered with the unchanged
+   camera. That is exactly the virtual image a flat mirror shows, so the water can look
+   its reflection up at its own screen pixel.
+4. **Sea and sky** ([`sky.wgsl`](src/builder/shaders/sky.wgsl), on the maths in
+   [`water.wgsl`](src/builder/shaders/water.wgsl)) — a real ray-surface intersection, so
+   every pixel below the horizon knows where on the sea it landed and how far away that
+   is. Fifteen octaves of sharp-crested wave from a 64 m swell down to 10 cm ripples,
+   spread around a wind direction, each with its own deep-water speed, each riding on
+   the one before it, and each cut into short-crested groups, give the height and the
+   normal; the ray is parallax-corrected onto the swell, and wavelengths finer than the
+   pixel footprint fade out and come back as GGX roughness on top of a Cox–Munk floor.
+   From that: Fresnel per facet, the sky mirrored per-pixel, the reflection pass sampled
+   where the facet's reflected ray really lands (projected back through the camera, not
+   offset in screen space) and blurred by the roughness, a stochastic glint model that
+   turns the smooth lobe into the individual sparkles a sea throws, and a GGX specular
+   from each of the last four breaks as point lights, which is what lays the long
+   shimmering path across the water. The breaks also light the haze around them, and
+   that halo reflects too. A moon — brightness, size, height, bearing, and phase all
+   settable — is shaded as the sphere it is, hangs in the haze with its own halo, and
+   lays a silver path of its own; the **Chop** setting turns a steady swell into a
+   confused one, with steeper, sharper, more scattered short waves and snaking crests.
+5. **Draw** — the same stars again, this time above the water, additively into the HDR
+   target.
+6. **Composite** — bright pass, separable blur, then a hue-preserving tonemap
+   ([`composite.wgsl`](src/builder/shaders/composite.wgsl)) so a gold break stays gold
+   instead of clipping to white.
+
+The particle pool is a ring buffer. Slots are handed out in order and every layer knows
+how long its stars burn, so the live set is always one contiguous window — the simulation
+and the draw never touch a dead slot, and an idle sky costs almost nothing.
+
+## Verifying
+
+`next build` never compiles WGSL, so the shaders have their own gate. `bun run verify`
+resolves and validates every shader against a real device, runs the exact
+emit → simulate → reflect → water → draw → bloom → composite chain the browser runs, and asserts on the
+pixels that come back:
+
+```bash
+bun run verify                                   # pass/fail on a headless frame
+bun run verify -- --pattern 4 --png willow.png   # render one pattern and look at it
+bun run verify -- --waves 1 --width 1280 --height 720 --png sea.png   # eyeball the water
+bun test                                         # specs, chart maths, choreography, beat tracking
+bun run lint
+```
+
+`bun test` covers the parts that have to be right and cannot be eyeballed: that every cue
+launches exactly its rise time before its break, that the script stays inside the particle
+pool, that the live beat tracker predicts beats seconds ahead of the music, and — through
+an `OfflineAudioContext` — that a far break really does arrive late, quiet and dull, and
+that a barrage never reaches the ceiling.
+
+`--pattern` takes a pattern id from `PATTERN_IDS`; `--count` and `--steps` set the star
+count and how far to simulate before the capture.
+
+## The social card
+
+The image that unfurls on X, LinkedIn and Slack is not artwork. `bun run og` runs a short
+scripted show through the same shader chain headlessly — rockets climb, four bursts break
+on a schedule — stops the clock, supersamples it down and writes
+[`public/og/night.png`](public/og/night.png). [`src/app/opengraph-image.tsx`](src/app/opengraph-image.tsx)
+lays the desk back over that plate at build time: the wordmark, one line of copy, and the
+cue rail, with the lit cue sitting directly under the burst breaking above it.
+
+```bash
+bun run og                 # re-render the background plate
+bun run og -- --time 2.1   # stop the clock somewhere else in the show
+bun run og:card out.png    # compose the finished card and look at it
+```
+
+`bun run og:card` calls the route itself, so what lands on disk is what `next build`
+bakes. The plate is committed, so a normal build never touches a GPU.
+
+## Pulse Show
+
+The original rhythm game is still at `/show`: hit notes in time with the music and the
+hits launch the fireworks. It brings its own Canvas2D particle engine, onset detection,
+and demo track — see [`src/game`](src/game) and [`src/components/PulseShow.tsx`](src/components/PulseShow.tsx).
+
+- **D F J K** — four launch tubes; tap zones on touch devices. **Esc** pauses.
+- Drop an mp3/wav/ogg/m4a on the page to play your own music. Analysis (spectral flux
+  onset detection, tempo from an inter-onset-interval histogram, energy-based sectioning)
+  lives in [`src/audio/analysis.ts`](src/audio/analysis.ts), shared with the builder's
+  synced show. It runs entirely in the browser and is cached in IndexedDB. Nothing is
+  uploaded.
+- Every gameplay decision reads `AudioContext.currentTime`;
+  `requestAnimationFrame` only decides when that clock is sampled.
+
+## Analytics
+
+Page views go to a self-hosted [Umami](https://umami.is) instance, and only when the
+build was given one. With `NEXT_PUBLIC_UMAMI_WEBSITE_ID` unset — a clone, a fork, `bun run
+dev` — [`UmamiAnalytics`](src/components/UmamiAnalytics.tsx) renders nothing and no
+third-party script is ever fetched.
+
+```bash
+NEXT_PUBLIC_UMAMI_WEBSITE_ID=   # the website UUID; the only required value
+NEXT_PUBLIC_UMAMI_SCRIPT_URL=   # tracker script or instance origin; optional
+NEXT_PUBLIC_UMAMI_DOMAINS=      # hostnames allowed to report, e.g. firework.sh
+```
+
+`NEXT_PUBLIC_*` values are inlined at build time, so changing one on Vercel needs a
+redeploy rather than a restart. `NEXT_PUBLIC_UMAMI_DOMAINS` is what keeps preview
+deployments out of the numbers for the domain people actually visit; the tracker matches
+it against `location.hostname` exactly and drops anything else without a word, so every
+entry is paired with its `www.` counterpart before it is handed over — naming one
+spelling of a site that answers on both would otherwise lose half the page views. See
+[`.env.example`](.env.example), and [`src/analytics/umami.ts`](src/analytics/umami.ts) for
+`trackEvent()` if a custom event is ever worth recording.
+
+## Stack
+
+Next.js 16, React 19, Tailwind 4, and [vgpu](https://www.npmjs.com/package/vgpu) for
+WebGPU. Shaders live in `.wgsl` files and are resolved by vgpu's loader, registered for
+both Turbopack and webpack in [`next.config.ts`](next.config.ts). Everything runs
+client-side; the server only ships the empty page.
+
+## Credits
+
+Built by [Tim Mikeladze](https://linesofcode.dev) —
+[GitHub](https://github.com/TimMikeladze) · [@linesofcode](https://x.com/linesofcode).
