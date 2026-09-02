@@ -614,7 +614,7 @@ export default function FireworksBuilder() {
         title="Layers"
         right={
           <span className="readout text-ash text-[10px]">
-            {stars.toLocaleString()} stars
+            {stars.toLocaleString("en-US")} stars
           </span>
         }
       >
@@ -1018,18 +1018,18 @@ export default function FireworksBuilder() {
 
   const statsReadout = (
     <span className="readout text-ash text-[10px] whitespace-nowrap">
-      {stats.fps} fps · {stats.particles.toLocaleString()} stars ·{" "}
+      {stats.fps} fps · {stats.particles.toLocaleString("en-US")} stars ·{" "}
       {stats.shells} up
     </span>
   );
 
   /*
-   * Credits, in the fine print. One line, small enough to stay out of the
-   * sky's way: down under the rack on a desk, along the foot of the dock on a
-   * phone, where the bottom of the screen is already spoken for.
+   * Credits, in the fine print. Foot of the rack panel on a desk, so they
+   * cannot drift over the JSON buttons; along the dock on a phone, where the
+   * bottom of the screen is already spoken for.
    */
   const credits = (
-    <nav className="text-ash/70 pointer-events-auto flex items-center gap-1.5 text-[10px] tracking-wide">
+    <nav className="text-ash/70 pointer-events-auto flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] tracking-wide">
       <Credit href="https://github.com/TimMikeladze/firework">GitHub</Credit>
       <span className="text-ash/35">·</span>
       <Credit href="https://linesofcode.dev">linesofcode.dev</Credit>
@@ -1087,9 +1087,10 @@ export default function FireworksBuilder() {
 
       {/* Desk panels, floated over the water on a wide screen. */}
       <aside
-        className={`panel-scroll desk-rise border-seam bg-panel absolute top-24 bottom-24 left-4 z-20 hidden w-[248px] overflow-y-auto rounded-[5px] border p-3 backdrop-blur-md transition-opacity duration-300 lg:block ${chromeClass}`}
+        className={`desk-rise border-seam bg-panel absolute top-24 bottom-24 left-4 z-20 hidden w-[248px] flex-col gap-3 overflow-hidden rounded-[5px] border p-3 backdrop-blur-md transition-opacity duration-300 lg:flex ${chromeClass}`}
       >
-        {rack}
+        <div className="min-h-0 flex-1 overflow-hidden">{rack}</div>
+        <div className="shrink-0">{credits}</div>
       </aside>
 
       <aside
@@ -1175,17 +1176,6 @@ export default function FireworksBuilder() {
           </div>
         </div>
       </div>
-
-      {/*
-       * The fine print on a desk. It sits in the strip under the rack, lined
-       * up with the music deck: the corner below belongs to the firing bar,
-       * which grows toward it as the window narrows.
-       */}
-      <footer
-        className={`pointer-events-none absolute bottom-[76px] left-7 z-30 hidden transition-opacity duration-300 lg:block ${chromeClass}`}
-      >
-        {credits}
-      </footer>
 
       {/*
        * The way back once the desk is hidden. Keyboards have H; thumbs get a
