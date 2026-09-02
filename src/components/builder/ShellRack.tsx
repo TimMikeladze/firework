@@ -84,11 +84,13 @@ export function ShellRack({
   onImport: () => void;
   onExport: () => void;
 }) {
+  const empty = saved.length === 0;
+
   return (
-    <div className="flex h-full flex-col gap-3">
-      <div className="flex flex-col gap-1.5">
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-1.5">
         <Eyebrow>Stock fireworks</Eyebrow>
-        <div className="flex flex-col gap-0.5">
+        <div className="panel-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
           {presets.map((shell) => (
             <ShellRow
               key={shell.id}
@@ -100,19 +102,23 @@ export function ShellRack({
         </div>
       </div>
 
-      <div className="bg-seam h-px" />
+      <div className="bg-seam h-px shrink-0" />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-1.5">
-        <div className="flex items-center justify-between">
+      <div
+        className={`flex flex-col gap-1.5 ${
+          empty ? "shrink-0" : "min-h-0 flex-1"
+        }`}
+      >
+        <div className="flex shrink-0 items-center justify-between">
           <Eyebrow>Your rack</Eyebrow>
           <span className="readout text-ash text-[10px]">{saved.length}</span>
         </div>
-        {saved.length === 0 ? (
+        {empty ? (
           <p className="text-ash text-[11px] leading-relaxed">
             Nothing saved yet. Tune a firework and press Save to keep it here.
           </p>
         ) : (
-          <div className="panel-scroll flex flex-col gap-0.5 overflow-y-auto">
+          <div className="panel-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
             {saved.map((shell) => (
               <ShellRow
                 key={shell.id}
@@ -126,7 +132,7 @@ export function ShellRack({
         )}
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex shrink-0 gap-2">
         <DeskButton onClick={onExport}>Copy JSON</DeskButton>
         <DeskButton onClick={onImport}>Paste JSON</DeskButton>
       </div>
